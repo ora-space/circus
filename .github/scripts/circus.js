@@ -85,16 +85,33 @@ module.exports = async function handle({ github, context, core, env = readEnv() 
     return projectMeta;
   }
 
+  // One issue event fans out into several concurrent runs (one per label at creation), so
+  // adding can race with another run; fall back to the item that run created.
+  async function projectItemId(projectId, contentId) {
+    try {
+      const added = await github.graphql(
+        `mutation($p: ID!, $c: ID!) { addProjectV2ItemById(input: {projectId: $p, contentId: $c}) { item { id } } }`,
+        { p: projectId, c: contentId },
+      );
+      return added.addProjectV2ItemById.item.id;
+    } catch (e) {
+      if (!/already exists/i.test(e.message)) throw e;
+      const data = await github.graphql(
+        `query($c: ID!) { node(id: $c) { ... on Issue { projectItems(first: 50) { nodes { id project { id } } } } } }`,
+        { c: contentId },
+      );
+      const found = data.node.projectItems.nodes.find((n) => n.project.id === projectId);
+      if (!found) throw e;
+      return found.id;
+    }
+  }
+
   // Mirror an item issue's state and labels onto the Project board.
   async function sync(n) {
     const item = await getIssue(n);
     if (isRun(item) || item.pull_request) return;
     const p = await project();
-    const added = await github.graphql(
-      `mutation($p: ID!, $c: ID!) { addProjectV2ItemById(input: {projectId: $p, contentId: $c}) { item { id } } }`,
-      { p: p.id, c: item.node_id },
-    );
-    const itemId = added.addProjectV2ItemById.item.id;
+    const itemId = await projectItemId(p.id, item.node_id);
     const names = labelNames(item);
     const slug = (prefix) => names.find((l) => l.startsWith(prefix))?.slice(prefix.length);
     const values = {
