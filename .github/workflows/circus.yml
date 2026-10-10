@@ -1,0 +1,28 @@
+# Keeps the circus database consistent: links run issues to their item, derives item
+# status from runs, and mirrors status/priority labels onto the org Project board.
+name: circus
+
+on:
+  issues:
+    types: [opened, closed, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: app
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.CIRCUS_APP_ID }}
+          private-key: ${{ secrets.CIRCUS_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+      - uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app.outputs.token }}
+          script: |
+            const handle = require('./.github/scripts/circus.js');
+            await handle({ github, context, core });
