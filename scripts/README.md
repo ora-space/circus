@@ -89,7 +89,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 没有 `## 总结` 就关闭的 issue，bot 会重新打开并提示。
 
-**只有作者关闭自己的 issue**，owner 也不例外：别人的 issue 做完了（比如它的 PR 已合并），在 issue 里提醒作者收尾。确需代关时（作者离开、事项作废），用 `close --for-author "<理由>"`，总结第一行会记下"由 @你 代作者 @作者 关闭：理由"。不是作者关闭、总结第一行又没有这一句的，bot 会重新打开并 @ 作者。
+**只有作者关闭自己的 issue**，owner 也不例外：别人的 issue 做完了（比如它的 PR 已合并），在 issue 里提醒作者收尾。`brief` 最上面的"待关闭"组就是在提醒作者收尾。确需代关时（作者离开、事项作废），用 `close --for-author "<理由>"`，总结第一行会记下"由 @你 代作者 @作者 关闭：理由"。不是作者关闭、总结第一行又没有这一句的，bot 会重新打开并 @ 作者。
 
 ## 6. 接收新需求和 bug
 
@@ -162,7 +162,7 @@ circus/
 |---|---|
 | `sync` | 会话开始时运行：本地 `main` 和 fork 的 `main` 对齐 `ora-space/circus` |
 | `whoami` | 当前账号是 owner 还是成员，也就是和 agent 对话的人 |
-| `brief [--mine]` | 先说明身份，再列未关闭的 issue，分三组：我创建的、等 owner 的；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
+| `brief [--mine]` | 先说明身份，再列未关闭的 issue，分四组：待关闭（我创建的，关联 PR 已合并、被 bot 重新打开过、或 parent 已关闭的运行 issue，最优先处理）；我创建的、等 owner 的；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
 | `new --title T [--label L]... [--depend N]... [--epic N] [--body-file F]` | 新建 issue；`--label`、`--depend` 写进正文，由 bot 打上、设为依赖；`--epic` 写"总事项：#N" |
 | `run N [--title T] [--body-file F]` | 为 #N 开运行 issue |
 | `show N` | 完整输出 issue 和全部评论 |

@@ -6,8 +6,10 @@ import { describeIdentity, whoami } from '../lib/identity.ts';
 import { parentOf } from '../lib/run.ts';
 
 const usage = `brief [--mine]
-    先说明你是谁（owner 还是成员），再列出未关闭的 issue，分三组：我创建的、等 owner 的（status:needs-owner）；其余我负责的（我是作者或 assignee）；
-    其他。每组画成树：子事项（正文"总事项：#N"）和运行 issue 挂在所属 issue 下；组内按优先级排序；
+    先说明你是谁（owner 还是成员），再列出未关闭的 issue，分四组：
+      待关闭（我创建的）：有已合并的关联 PR、被 bot 重新打开过、或 parent 已关闭的运行 issue，最优先处理；
+      等 owner（我创建的，status:needs-owner）；其余我负责的（我是作者或 assignee）；其他。
+    每组画成树：子事项（正文"总事项：#N"）和运行 issue 挂在所属 issue 下；组内按优先级排序；
     有未完成依赖的标出"等待"。--mine 不列"其他"。`;
 
 export interface ListedIssue {
@@ -18,6 +20,8 @@ export interface ListedIssue {
   labels: string[];
   body: string;
   waitingOn: number[]; // open issues this one is blocked by
+  mergedPrs: string[]; // merged PRs that reference it, e.g. ora-space/desktop#12
+  reopenedByBot: boolean; // a close was undone (no summary, or not the author)
 }
 
 const mine = (i: ListedIssue, me: string) => i.author === me || i.assignees.includes(me);
@@ -31,8 +35,19 @@ function rank(i: ListedIssue): number {
 // What an issue hangs under: the parent of a run, or the epic of a sub-item.
 const upOf = (i: ListedIssue) => parentOf(i.body) ?? epicOf(i.body);
 
-function describe(i: ListedIssue, nested: boolean): string {
-  const notes: string[] = [];
+// Why an open issue of mine looks done; empty when nothing says so. `open` is every open
+// issue number, so a run whose parent is missing from it has a closed parent.
+export function closeHints(i: ListedIssue, open: Set<number>): string[] {
+  const hints: string[] = [];
+  if (i.mergedPrs.length) hints.push(`PR ${i.mergedPrs.join(' ')} 已合并`);
+  if (i.reopenedByBot) hints.push('被 bot 重新打开，补总结后关闭');
+  const parent = parentOf(i.body);
+  if (parent !== null && !open.has(parent)) hints.push(`parent #${parent} 已关闭`);
+  return hints;
+}
+
+function describe(i: ListedIssue, nested: boolean, hints: string[] = []): string {
+  const notes: string[] = [...hints];
   const up = upOf(i);
   if (!nested && up !== null) notes.push(parentOf(i.body) !== null ? `运行 → #${up}` : `总事项 #${up}`);
   if (i.waitingOn.length) notes.push(`等待 ${i.waitingOn.map((n) => `#${n}`).join(' ')}`);
@@ -42,7 +57,7 @@ function describe(i: ListedIssue, nested: boolean): string {
 }
 
 // The issues of one section as a forest; an issue nests only under an issue of the same section.
-export function tree(list: ListedIssue[]): string[] {
+export function tree(list: ListedIssue[], hintsOf: (i: ListedIssue) => string[] = () => []): string[] {
   const byNumber = new Map(list.map((i) => [i.number, i]));
   const up = (n: number) => {
     const u = upOf(byNumber.get(n)!);
@@ -66,7 +81,7 @@ export function tree(list: ListedIssue[]): string[] {
   }
   const out: string[] = [];
   const walk = (i: ListedIssue, prefix: string, last: boolean, depth: number) => {
-    out.push(depth === 0 ? `- ${describe(i, false)}` : `${prefix}${last ? '└─ ' : '├─ '}${describe(i, true)}`);
+    out.push(depth === 0 ? `- ${describe(i, false, hintsOf(i))}` : `${prefix}${last ? '└─ ' : '├─ '}${describe(i, true, hintsOf(i))}`);
     const kids = children.get(i.number) ?? [];
     const next = depth === 0 ? '  ' : prefix + (last ? '   ' : '│  ');
     kids.forEach((k, idx) => walk(k, next, idx === kids.length - 1, depth + 1));
@@ -77,16 +92,21 @@ export function tree(list: ListedIssue[]): string[] {
 
 export function format(issues: ListedIssue[], me: string, onlyMine: boolean): string {
   const sorted = [...issues].sort((a, b) => rank(a) - rank(b));
+  const open = new Set(issues.map((i) => i.number));
+  // Only the author closes an issue, so only mine can be in this group; it comes first.
+  const hints = (i: ListedIssue) => (i.author === me ? closeHints(i, open) : []);
+  const closable = sorted.filter((i) => hints(i).length);
   // Only issues I opened: what I am blocked on, not everyone's queue (the board shows that).
-  const waiting = sorted.filter((i) => i.author === me && i.labels.includes('status:needs-owner'));
-  const rest = sorted.filter((i) => !waiting.includes(i));
+  const waiting = sorted.filter((i) => !closable.includes(i) && i.author === me && i.labels.includes('status:needs-owner'));
+  const rest = sorted.filter((i) => !closable.includes(i) && !waiting.includes(i));
   const sections: [string, ListedIssue[]][] = [
+    ['待关闭（我创建的）', closable],
     ['等 owner（我创建的）', waiting],
     [`我负责的（@${me}）`, rest.filter((i) => mine(i, me))],
   ];
   if (!onlyMine) sections.push(['其他', rest.filter((i) => !mine(i, me))]);
   return sections
-    .map(([title, list]) => [`## ${title} (${list.length})`, ...tree(list), ''].join('\n'))
+    .map(([title, list]) => [`## ${title} (${list.length})`, ...tree(list, hints), ''].join('\n'))
     .join('\n')
     .trimEnd();
 }
@@ -99,12 +119,21 @@ interface Node {
   assignees: { nodes: { login: string }[] };
   labels: { nodes: { name: string }[] };
   blockedBy: { nodes: { number: number; state: string }[] };
+  timelineItems: {
+    nodes: (
+      | { __typename: 'CrossReferencedEvent'; source: { __typename: string; number?: number; merged?: boolean; repository?: { nameWithOwner: string } } }
+      | { __typename: 'ReopenedEvent'; actor: { __typename: string } | null }
+    )[];
+  };
 }
 
 const QUERY = `query($o: String!, $r: String!, $after: String) { repository(owner: $o, name: $r) {
   issues(states: OPEN, first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes {
     number title body author { login } assignees(first: 20) { nodes { login } } labels(first: 30) { nodes { name } }
-    blockedBy(first: 30) { nodes { number state } } } } } }`;
+    blockedBy(first: 30) { nodes { number state } }
+    timelineItems(last: 50, itemTypes: [CROSS_REFERENCED_EVENT, REOPENED_EVENT]) { nodes { __typename
+      ... on CrossReferencedEvent { source { __typename ... on PullRequest { number merged repository { nameWithOwner } } } }
+      ... on ReopenedEvent { actor { __typename } } } } } } } }`;
 
 export function fetchOpen(run: Parameters<typeof graphql>[0], repo: string): ListedIssue[] {
   const [o, r] = repo.split('/');
@@ -118,6 +147,15 @@ export function fetchOpen(run: Parameters<typeof graphql>[0], repo: string): Lis
     );
     const { pageInfo, nodes } = page.repository.issues;
     for (const n of nodes) {
+      const events = n.timelineItems.nodes;
+      const mergedPrs = events.flatMap((e) =>
+        e.__typename === 'CrossReferencedEvent' && e.source.__typename === 'PullRequest' && e.source.merged
+          ? [e.source.repository!.nameWithOwner === repo ? `#${e.source.number}` : `${e.source.repository!.nameWithOwner}#${e.source.number}`]
+          : [],
+      );
+      // The latest reopen decides: a person reopening after the bot means it is not done.
+      const reopens = events.filter((e) => e.__typename === 'ReopenedEvent');
+      const last = reopens.at(-1);
       out.push({
         number: n.number,
         title: n.title,
@@ -129,6 +167,8 @@ export function fetchOpen(run: Parameters<typeof graphql>[0], repo: string): Lis
           .filter((b) => b.state === 'OPEN')
           .map((b) => b.number)
           .sort((a, b) => a - b),
+        mergedPrs: [...new Set(mergedPrs)],
+        reopenedByBot: last?.__typename === 'ReopenedEvent' && last.actor?.__typename === 'Bot',
       });
     }
     after = pageInfo.hasNextPage ? pageInfo.endCursor : null;

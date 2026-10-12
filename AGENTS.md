@@ -13,7 +13,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 1. 同步：**每个会话开始都要先同步 `ora-space/circus`**，因为本地仓库可能是 fork 或停在旧版本。运行 `node scripts/cli.ts sync`：本地 `main` 快进到 `ora-space/circus` 最新，origin 是 fork 时顺手把 fork 的 `main` 推到最新。完整步骤见 [`.agents/skills/circus/SKILL.md`](.agents/skills/circus/SKILL.md)；经 skill 进来的会话已完成这一步。同步失败时告诉用户。
 2. 身份：`node scripts/cli.ts whoami`。agent 和它的人共用 GitHub 账号，所以这就是和你对话的人：有写权限的是 owner，只读的是成员。
 3. 协议：完整阅读 [`scripts/README.md`](scripts/README.md)。
-4. issue：`node scripts/cli.ts brief`，第一行再次说明身份，然后列出未关闭的 issue，你负责的（你是作者或 assignee）在前。
+4. issue：`node scripts/cli.ts brief`，第一行再次说明身份，然后列出未关闭的 issue。最上面的"待关闭"组是你创建的、看起来已经做完的 issue（关联 PR 已合并、被 bot 重新打开过、或运行 issue 的 parent 已关闭），最优先处理：确认做完就按 [关闭前先总结](scripts/README.md#5-关闭前先总结) 关闭，没做完就在 issue 里说明还差什么。
 5. 记忆：`node scripts/cli.ts memory` 列出索引；`rules/` 全部读，其余按当前任务读正文（规则见 [`memory/README.md`](memory/README.md)）。
 
 完成标准：能说出和你对话的人是 owner 还是成员、你负责的 issue 有哪些，以及与本次任务相关的记忆条目。

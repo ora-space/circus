@@ -11,6 +11,8 @@ const issue = (number: number, title: string, author: string, extra: Partial<Lis
   labels: [],
   body: '',
   waitingOn: [],
+  mergedPrs: [],
+  reopenedByBot: false,
   ...extra,
 });
 
@@ -24,6 +26,8 @@ test('brief: my issues waiting on the owner first, then mine by priority, then o
   assert.equal(
     format(issues, 'me', false),
     [
+      '## 待关闭（我创建的） (0)',
+      '',
       '## 等 owner（我创建的） (1)',
       '- #4 blocked  @me [status:needs-owner priority:p1]',
       '',
@@ -36,6 +40,31 @@ test('brief: my issues waiting on the owner first, then mine by priority, then o
     ].join('\n'),
   );
   assert.doesNotMatch(format(issues, 'me', true), /其他|theirs/);
+});
+
+test('brief: issues of mine that look done come first, others\' never', () => {
+  const issues = [
+    issue(1, 'merged', 'me', { mergedPrs: ['#22', 'ora-space/desktop#5'], labels: ['status:in-review'] }),
+    issue(2, 'reopened', 'me', { reopenedByBot: true, labels: ['status:needs-owner'] }),
+    issue(3, '运行：旧事', 'me', { body: 'Parent: #99' }),
+    issue(4, 'their merged', 'bob', { mergedPrs: ['#23'], assignees: ['me'] }),
+    issue(5, 'plain', 'me'),
+  ];
+  assert.equal(
+    format(issues, 'me', true),
+    [
+      '## 待关闭（我创建的） (3)',
+      '- #1 merged（PR #22 ora-space/desktop#5 已合并）  @me [status:in-review]',
+      '- #2 reopened（被 bot 重新打开，补总结后关闭）  @me [status:needs-owner]',
+      '- #3 运行：旧事（parent #99 已关闭；运行 → #99）  @me',
+      '',
+      '## 等 owner（我创建的） (0)',
+      '',
+      '## 我负责的（@me） (2)',
+      '- #4 their merged  @bob → @me',
+      '- #5 plain  @me',
+    ].join('\n'),
+  );
 });
 
 test('tree nests sub-items and runs, marks waits, and notes parents outside the section', () => {
@@ -73,6 +102,14 @@ test('brief pages through GraphQL and keeps only open blockers', () => {
     assignees: { nodes: [] },
     labels: { nodes: [] },
     blockedBy: { nodes: blockers.map(([n, state]) => ({ number: n, state })) },
+    timelineItems: {
+      nodes: [
+        { __typename: 'CrossReferencedEvent', source: { __typename: 'PullRequest', number: 7, merged: number === 1, repository: { nameWithOwner: 'ora-space/circus' } } },
+        { __typename: 'CrossReferencedEvent', source: { __typename: 'Issue' } },
+        { __typename: 'ReopenedEvent', actor: { __typename: 'Bot' } },
+        { __typename: 'ReopenedEvent', actor: { __typename: number === 1 ? 'Bot' : 'User' } },
+      ],
+    },
   });
   const { ctx, calls, lines } = fakeContext((args, input) => {
     if (args[1] === 'user') return 'me\n';
@@ -82,5 +119,6 @@ test('brief pages through GraphQL and keeps only open blockers', () => {
   command.run(['--mine'], ctx);
   assert.equal(calls.length, 4);
   assert.match(lines[0], /^你是 @me（成员）/);
-  assert.match(lines[1], /- #1 t1（等待 #2 #5）  @me\n- #2 t2  @me/);
+  assert.match(lines[1], /## 待关闭（我创建的） \(1\)\n- #1 t1（PR #7 已合并；被 bot 重新打开，补总结后关闭；等待 #2 #5）  @me/);
+  assert.match(lines[1], /## 我负责的（@me） \(1\)\n- #2 t2  @me/);
 });
