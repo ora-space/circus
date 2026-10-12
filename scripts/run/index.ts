@@ -4,7 +4,8 @@ import { runBody } from '../lib/run.ts';
 
 const usage = `run N [--title T] [--body-file F]
     为 #N 开一个运行 issue（正文首行 Parent: #N），输出链接。bot 打上 run、挂为 #N 的子 issue，
-    你不在 #N 的 assignee 里时补上。标题默认"运行：<#N 的标题>"。`;
+    你不在 #N 的 assignee 里时补上。标题默认"运行：<#N 的标题>"。
+    --body-file 读 UTF-8 文件；- 为 stdin（Windows 勿用管道喂中文）。`;
 
 export const command: Command = {
   usage,

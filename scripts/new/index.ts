@@ -5,7 +5,8 @@ import { familyOf } from '../lib/labels.ts';
 
 const usage = `new --title T [--label L]... [--depend N]... [--epic N] [--body-file F]
     新建 issue 并输出链接。--label、--depend 写进正文，由 bot 在 issue 打开时打上 label、设为依赖
-    （只限可由正文设置的 label）；--epic 写"总事项：#N"，brief 据此画树。--body-file - 读 stdin。`;
+    （只限可由正文设置的 label）；--epic 写"总事项：#N"，brief 据此画树。
+    --body-file 读 UTF-8 文件；- 为 stdin（Windows 勿用管道喂中文，见 memory/preferences/powershell-utf8-gh.md）。`;
 
 // Labels cannot be passed to `gh issue create`: the bot reverts labels it did not set.
 // They go into the body with the relations, where the bot reads them when the issue opens.
