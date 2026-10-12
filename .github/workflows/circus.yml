@@ -6,6 +6,11 @@ on:
     types: [opened, closed, reopened, labeled, unlabeled, assigned, unassigned]
   issue_comment:
     types: [created]
+  # Merged PRs remind the referenced issues' authors to close them. pull_request_target runs
+  # the base branch's workflow with its secrets; the checkout below is the base branch, so
+  # no code from the PR (which may come from a fork) is executed.
+  pull_request_target:
+    types: [closed]
   # Full resync of the board: corrects hand edits and anything a missed event left behind.
   schedule:
     - cron: '17 3 * * *'

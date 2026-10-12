@@ -19,4 +19,4 @@ description: ora-space 的协作网：同步 ora-space/circus，加载长期记�
 
 2. 完整阅读 `AGENTS.md`，从它的"会话开始"一节接着执行。
 
-完成标准：`sync` 报告 `main` 已对齐，已运行 `node scripts/cli.ts brief`，知道本次会话负责哪些 issue。
+完成标准：`sync` 报告 `main` 已对齐，已运行 `node scripts/cli.ts brief`，知道和你对话的人是 owner 还是成员、本次会话负责哪些 issue。

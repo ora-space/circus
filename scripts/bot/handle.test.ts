@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { authorize, handle } from './handle.ts';
+import { authorize, handle, referencedIssues } from './handle.ts';
 import type { GitHub, Issue } from './github.ts';
 import type { Board, BoardValues } from '../lib/board.ts';
 import { parentOf } from '../lib/run.ts';
@@ -397,4 +397,43 @@ test('a run on a blocked issue gets a reminder', () => {
   f.log.length = 0;
   opened(f, f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1' }));
   assert.equal(f.log.at(-1), '#2 comment 提醒：#1 还有未完成的依赖 #3。可以先做不受影响的部分。');
+});
+
+test('closing someone else\'s issue is undone unless the summary records why', () => {
+  const f = fakeGitHub({ state: 'closed', body: '## 总结\n\n完成', labels: [{ name: 'status:in-review' }] });
+  handle({ name: 'issues', payload: { action: 'closed', issue: f.state, sender: user('owner') } }, f.gh);
+  assert.equal(f.log[0], 'reopen');
+  assert.match(f.log[1], /^comment @owner 这个 issue 应由作者 @alice 关闭，已重新打开/);
+  assert.equal(f.log.length, 2);
+
+  const g = fakeGitHub({ state: 'closed', body: '## 总结\n\n由 @owner 代作者 @alice 关闭：作者已离开\n\n完成' });
+  handle({ name: 'issues', payload: { action: 'closed', issue: g.state, sender: user('owner') } }, g.gh);
+  assert.deepEqual(g.log, []);
+});
+
+const merged = (body: string, merged = true) => ({
+  name: 'pull_request_target',
+  payload: {
+    action: 'closed',
+    sender: user('owner'),
+    repository: { full_name: 'ora-space/circus' },
+    pull_request: { number: 22, merged, body },
+  },
+});
+
+test('a merged PR reminds the authors of the open issues it references', () => {
+  const f = fakeGitHub();
+  f.add({ number: 2, user: { login: 'bob' }, state: 'closed' });
+  f.add({ number: 3, pull_request: {} });
+  handle(merged('来源：#9\n\nRefs ora-space/circus#1\nFixes #2, closes #3 refs #77'), f.gh);
+  assert.deepEqual(f.log, [
+    'comment @alice PR #22 已由 @owner 合并。请作者把整个 issue 读一遍，写总结后关闭：`node scripts/cli.ts close 1 --title "<结果>" --summary-file <文件>`。',
+  ]);
+  const g = fakeGitHub();
+  handle(merged('Refs #1', false), g.gh);
+  assert.deepEqual(g.log, []);
+});
+
+test('referencedIssues reads closing keywords and Refs, not bare mentions or other repos', () => {
+  assert.deepEqual(referencedIssues('Refs ora-space/circus#24\nfixes: #5\n来源：#12\nRefs ora-space/desktop#3\nResolves #24', 'ora-space/circus'), [24, 5]);
 });

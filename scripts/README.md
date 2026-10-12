@@ -12,7 +12,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 **issue 都在 upstream 仓库 `ora-space/circus`。** 本地 circus 可能是 fork 的 clone，但 issue、评论、斜杠命令和 PR 都在 `ora-space/circus` 上进行，bot 也只在那里运行；fork 上的 issue 不会被任何人看到或处理。CLI 的命令总是带 `-R ora-space/circus`（来自 `circus.env`）；直接用 `gh issue` / `gh pr` 时也要带上。
 
-身份按 GitHub 账号判断：作者、assignee、命令发出者都看 login。每个人和自己的 agent 共用一个账号，所以 bot 区分的是人，不区分同一个人的多个 agent。除 owner 外，所有人对 circus 只有读权限，GitHub 本身就不允许他们直接改 label 和 assignee，只能经 bot；owner 在网页上手动改的同样会被 bot 撤销：bot 只能看出改动来自哪个账号，分不出是 owner 本人还是 owner 的 agent，所以 owner 也通过斜杠命令修改，并因写权限在任何 issue 上都能用。
+身份按 GitHub 账号判断（`node scripts/cli.ts whoami` 说明当前账号是 owner 还是成员）：作者、assignee、命令发出者都看 login。每个人和自己的 agent 共用一个账号，所以 bot 区分的是人，不区分同一个人的多个 agent。除 owner 外，所有人对 circus 只有读权限，GitHub 本身就不允许他们直接改 label 和 assignee，只能经 bot；owner 在网页上手动改的同样会被 bot 撤销：bot 只能看出改动来自哪个账号，分不出是 owner 本人还是 owner 的 agent，所以 owner 也通过斜杠命令修改，并因写权限在任何 issue 上都能用。
 
 ## 1. Label 只由 bot 打
 
@@ -89,6 +89,8 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 没有 `## 总结` 就关闭的 issue，bot 会重新打开并提示。
 
+**只有作者关闭自己的 issue**，owner 也不例外：别人的 issue 做完了（比如它的 PR 已合并），在 issue 里提醒作者收尾。确需代关时（作者离开、事项作废），用 `close --for-author "<理由>"`，总结第一行会记下"由 @你 代作者 @作者 关闭：理由"。不是作者关闭、总结第一行又没有这一句的，bot 会重新打开并 @ 作者。
+
 ## 6. 接收新需求和 bug
 
 用户说要加一个功能或修一个 bug 时：
@@ -159,14 +161,15 @@ circus/
 | 命令 | 作用 |
 |---|---|
 | `sync` | 会话开始时运行：本地 `main` 和 fork 的 `main` 对齐 `ora-space/circus` |
-| `brief [--mine]` | 未关闭的 issue，分三组：我创建的、等 owner 的；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
+| `whoami` | 当前账号是 owner 还是成员，也就是和 agent 对话的人 |
+| `brief [--mine]` | 先说明身份，再列未关闭的 issue，分三组：我创建的、等 owner 的；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
 | `new --title T [--label L]... [--depend N]... [--epic N] [--body-file F]` | 新建 issue；`--label`、`--depend` 写进正文，由 bot 打上、设为依赖；`--epic` 写"总事项：#N" |
 | `run N [--title T] [--body-file F]` | 为 #N 开运行 issue |
 | `show N` | 完整输出 issue 和全部评论 |
 | `label N [+]L... -L...` | 评论 `/label`、`/unlabel` |
 | `assign N [+]@U... -@U...` | 评论 `/assign`、`/unassign` |
 | `depend N [+]#M... -#M...` | 评论 `/depend`、`/undepend` |
-| `close N --title T --summary-file F [--not-planned]` | 改标题、写总结、关闭 |
+| `close N --title T --summary-file F [--not-planned] [--for-author R]` | 改标题、写总结、关闭；只限作者，代关要写理由 |
 | `worktree <repo> <type>/[<issue>-]<slug>` | 产品仓库：按需 fork 并 clone，基于最新 upstream main 建分支和 worktree |
 | `memory` | 记忆索引 |
 | `setup` | owner 用：按登记表创建 label |
@@ -196,8 +199,9 @@ Priority 字段来自 `priority:*`。`brief` 只列自己创建的、等 owner �
 | 手动打上 label | 撤销并留言；打开后一分钟内、且正文里写了的 label 除外（`gh issue create --label` 产生的事件），运行 issue 上的 `run` 除外 |
 | 手动移除 label | 恢复并留言 |
 | 手动 assign / unassign | 撤销并留言 |
-| issue 关闭 | 正文不以 `## 总结` 开头就重新打开并留言；有总结时移除 `status:*`、同步看板为 Done，通知依赖它的 issue 并重新同步它们；运行 issue 把总结评论到 parent，并重新同步 parent |
+| issue 关闭 | 正文不以 `## 总结` 开头，或不是作者关闭、总结第一行又没写代关理由，就重新打开并留言；有总结时移除 `status:*`、同步看板为 Done，通知依赖它的 issue 并重新同步它们；运行 issue 把总结评论到 parent，并重新同步 parent |
 | issue 重新打开 | 同步看板，连同依赖它的 issue（运行 issue 同步它的 parent） |
+| circus 的 PR 合并 | 在 PR 描述里 `Refs` / `Fixes` 等指向的未关闭 issue 下 @ 作者，提醒总结后关闭（`pull_request_target`，只运行 main 上的代码） |
 | 每天定时 / 在 Actions 页面手动触发 | 全量同步所有未关闭的 issue 到看板 |
 | 新评论 | 执行其中的斜杠命令（见权限表），同步看板；发出者不是作者时查一次仓库权限 |
 

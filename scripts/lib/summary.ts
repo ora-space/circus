@@ -23,3 +23,13 @@ export function withSummary(body: string | null | undefined, summary: string): s
   const head = `${SUMMARY_HEADING}\n\n${summary.trim()}`;
   return original ? head + SEPARATOR + original : head;
 }
+
+// Only the author closes an issue. Anyone else must say so, with a reason, as the first
+// line of the summary; the bot reopens issues closed by others without it.
+export const forAuthorLine = (closer: string, author: string, reason: string) =>
+  `由 @${closer} 代作者 @${author} 关闭：${reason.trim()}`;
+
+export function closedForAuthor(summary: string, author: string): boolean {
+  const escaped = author.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^由 @[\\w-]+ 代作者 @${escaped} 关闭[:：]\\s*\\S`).test(summary.trimStart());
+}

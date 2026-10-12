@@ -2,10 +2,11 @@ import { parseArgs } from 'node:util';
 import type { Command } from '../lib/context.ts';
 import { epicOf } from '../lib/deps.ts';
 import { graphql } from '../lib/gh.ts';
+import { describeIdentity, whoami } from '../lib/identity.ts';
 import { parentOf } from '../lib/run.ts';
 
 const usage = `brief [--mine]
-    列出未关闭的 issue，分三组：我创建的、等 owner 的（status:needs-owner）；其余我负责的（我是作者或 assignee）；
+    先说明你是谁（owner 还是成员），再列出未关闭的 issue，分三组：我创建的、等 owner 的（status:needs-owner）；其余我负责的（我是作者或 assignee）；
     其他。每组画成树：子事项（正文"总事项：#N"）和运行 issue 挂在所属 issue 下；组内按优先级排序；
     有未完成依赖的标出"等待"。--mine 不列"其他"。`;
 
@@ -139,7 +140,8 @@ export const command: Command = {
   usage,
   run(args, ctx) {
     const { values } = parseArgs({ args, options: { mine: { type: 'boolean', default: false } } });
-    const me = ctx.gh(['api', 'user', '--jq', '.login']).trim();
-    ctx.out(format(fetchOpen(ctx.gh, ctx.repo), me, values.mine));
+    const id = whoami(ctx);
+    ctx.out(describeIdentity(id) + '\n');
+    ctx.out(format(fetchOpen(ctx.gh, ctx.repo), id.login, values.mine));
   },
 };

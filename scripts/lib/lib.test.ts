@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyLabels, isKnown, labelsFromBody, type LabelFamily } from './labels.ts';
-import { hasSummary, splitSummary, withSummary } from './summary.ts';
+import { closedForAuthor, forAuthorLine, hasSummary, splitSummary, withSummary } from './summary.ts';
 import { parentOf, runBody } from './run.ts';
 import { parseEnv } from './config.ts';
 import { dependLine, dependsFromBody, epicLine, epicOf } from './deps.ts';
@@ -74,4 +74,13 @@ test('epicOf reads 总事项 lines and prose', () => {
   assert.equal(epicOf('关联总事项 #11。来自验证'), 11);
   assert.equal(epicOf('无'), null);
   assert.equal(epicLine(11), '总事项：#11');
+});
+
+test('closedForAuthor needs the line first, naming the author, with a reason', () => {
+  const line = forAuthorLine('owner', 'bob', '作者已离开');
+  assert.equal(line, '由 @owner 代作者 @bob 关闭：作者已离开');
+  assert.ok(closedForAuthor(`${line}\n\n结论`, 'bob'));
+  assert.ok(!closedForAuthor(`${line}`, 'carol'));
+  assert.ok(!closedForAuthor(`结论\n${line}`, 'bob'));
+  assert.ok(!closedForAuthor('由 @owner 代作者 @bob 关闭：', 'bob'));
 });

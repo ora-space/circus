@@ -3,7 +3,9 @@
 //   - sets labels and dependencies written in the body when an issue opens,
 //   - applies slash commands from comments, checking who may run them,
 //   - reverts label and assignee changes made by hand,
-//   - reopens issues closed without a summary, and tells dependents when a blocker closes,
+//   - reopens issues closed without a summary or by someone other than the author (unless
+//     the summary says why), and tells dependents when a blocker closes,
+//   - reminds authors to close their issues when a circus PR referencing them is merged,
 //   - links runs to their parent and reports their summary back (see lib/run.ts),
 //   - drops status labels on close and mirrors issues onto the board (see lib/board.ts);
 //     nobody else writes to the board.
@@ -14,7 +16,7 @@ import { dependsFromBody } from '../lib/deps.ts';
 import { applyLabels, isBotLabel, isKnown, labelsFromBody } from '../lib/labels.ts';
 import { parentOf, RUN_LABEL } from '../lib/run.ts';
 import { parseSlash, type SlashCommand } from '../lib/slash.ts';
-import { hasSummary, splitSummary, SUMMARY_HEADING } from '../lib/summary.ts';
+import { closedForAuthor, hasSummary, splitSummary, SUMMARY_HEADING } from '../lib/summary.ts';
 
 export interface Event {
   name: string; // GITHUB_EVENT_NAME
@@ -188,7 +190,37 @@ function syncBoard(gh: GitHub, board: Board, item: Issue): void {
 // made on the board by hand and refills values cleared by a Status options change.
 const RESYNC_EVENTS = ['schedule', 'workflow_dispatch'];
 
+// Issues a PR body points at with "Refs/Fixes/Closes/Resolves #N" (or owner/repo#N for this repository).
+export function referencedIssues(body: string | null | undefined, repo: string): number[] {
+  const escaped = repo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`\\b(?:refs|fixes|fixed|closes|closed|resolves|resolved)\\s*:?\\s+(?:${escaped})?#(\\d+)`, 'gi');
+  const out: number[] = [];
+  for (const m of (body ?? '').matchAll(re)) if (!out.includes(Number(m[1]))) out.push(Number(m[1]));
+  return out;
+}
+
+// A merged PR does not close its issues: their authors do, after summarizing.
+function remindAuthors(gh: GitHub, payload: any): void {
+  const pr = payload.pull_request;
+  if (payload.action !== 'closed' || !pr?.merged || payload.sender?.type === 'Bot') return;
+  for (const n of referencedIssues(pr.body, payload.repository.full_name)) {
+    let issue: Issue;
+    try {
+      issue = gh.getIssue(n);
+    } catch {
+      continue;
+    }
+    if (issue.pull_request || issue.state !== 'open') continue;
+    gh.comment(
+      n,
+      `@${issue.user.login} PR #${pr.number} 已由 @${payload.sender.login} 合并。请作者把整个 issue 读一遍，写总结后关闭：` +
+        `\`node scripts/cli.ts close ${n} --title "<结果>" --summary-file <文件>\`。`,
+    );
+  }
+}
+
 export function handle(event: Event, gh: GitHub, board?: Board): void {
+  if (event.name === 'pull_request_target') return remindAuthors(gh, event.payload);
   if (RESYNC_EVENTS.includes(event.name)) {
     if (board) for (const item of gh.listOpenIssues()) syncBoard(gh, board, item);
     return;
@@ -253,6 +285,16 @@ function dispatch(event: Event, gh: GitHub): number[] {
       return [];
     }
     case 'issues.closed': {
+      const author: string = issue.user.login;
+      if (hasSummary(issue.body) && sender.login !== author && !closedForAuthor(splitSummary(issue.body).summary, author)) {
+        gh.reopen(n);
+        gh.comment(
+          n,
+          `${who} 这个 issue 应由作者 @${author} 关闭，已重新打开。@${author} 请把整个 issue 读一遍，写总结后关闭。` +
+            '确需代关时，用 `node scripts/cli.ts close N --for-author "<理由>"`，总结第一行会记下代关理由。',
+        );
+        return [n];
+      }
       if (hasSummary(issue.body)) {
         // Done is the closed state itself, not a label.
         const current = names(gh.getIssue(n));
