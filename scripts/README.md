@@ -163,6 +163,7 @@ circus/
   - 等 owner 的事，作者给自己的 issue 打 `status:needs-owner`（PR 待审打 `status:in-review`）；运行 issue 的作者改不了 parent，就打在自己的运行 issue 上。
   - owner 回复、拍板或提出要求后，打 `/label status:needs-author`，它会替换掉 `needs-owner`，作者的 `brief` 会把这个 issue 放进"等我跟进"。只是顺手评论、不需要作者动作时，直接 `/unlabel status:needs-owner`。
   - 作者跟进后 `/unlabel status:needs-author`，或者需要 owner 再看时改回 `status:needs-owner`。
+  - 球传过来时，用 `node scripts/cli.ts updates N` 看对方上次之后说了什么：它以你上次发言为界，列出之后的评论、谁用斜杠命令改了状态、status 的完整轨迹。
 
 ## CLI
 
@@ -175,6 +176,7 @@ circus/
 | `brief [--mine]` | 先说明身份，再列未关闭的 issue，分五组，空组不显示：待关闭（我创建的，关联 PR 已合并、被 bot 重新打开过、或 parent 已关闭的运行 issue，最优先处理）；等我跟进（我创建的 `status:needs-author`）；等 owner 的（owner 看到所有人的 `status:needs-owner` 和 `status:in-review`，成员只看到自己创建的 `status:needs-owner`）；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
 | `new --title T [--label L]... [--depend N]... [--epic N] [--body-file F]` | 新建 issue；`--label`、`--depend` 写进正文，由 bot 打上、设为依赖；`--epic` 写"总事项：#N" |
 | `run N [--title T] [--body-file F]` | 为 #N 开运行 issue |
+| `updates N [--all]` | 你上次发言之后的动静：别人的评论、斜杠命令、status 轨迹、引用的 PR、关闭和重新打开、有更新的运行 issue |
 | `show N` | 完整输出 issue 和全部评论 |
 | `label N [+]L... -L...` | 评论 `/label`、`/unlabel` |
 | `assign N [+]@U... -@U...` | 评论 `/assign`、`/unassign` |

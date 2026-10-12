@@ -33,6 +33,12 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 3. **新建 issue**：功能和 bug 按 [接收新需求](scripts/README.md#6-接收新需求和-bug) 先问必要的问题，重新组织成标题和正文，`node scripts/cli.ts new` 后开始调研，发现都评论到 issue。
 4. **记忆 PR**：用户表达了长期成立的规则、方法或偏好时，按 [`memory/README.md`](memory/README.md) 开 PR；是否合并由 owner 决定。
 
+**"#N 有更新"**：先 `node scripts/cli.ts updates N`，看你上次发言之后的评论、status 变化、PR 和运行 issue，再按"球在谁手里"接着做：
+
+- `status:needs-author`，你是作者：owner 已经回复。按 owner 的结论推进（改方案、同步文档、开运行），在 issue 里回复你打算怎么做；做完就关闭，需要 owner 再看就改回 `status:needs-owner`，否则 `/unlabel status:needs-author`。
+- `status:needs-owner` 或 `status:in-review`，用户是 owner：把待决的点和各选项的代价讲给 owner，按 owner 的话在 issue 里写下结论，再 `/label status:needs-author` 交回作者。
+- 其他情况：向用户概括新动静，问清要不要跟进；回复写在 issue 里。
+
 **决策**是最需要留痕的输入：待决的开成 `type:decision` 并打 `status:needs-owner`，正文列选项、依据、代价，请 owner 拍板。owner 拍板时在 issue 里写下结论，并 `/label status:needs-author` 提醒作者跟进；作者按结论处理完，按 [关闭前先总结](scripts/README.md#5-关闭前先总结) 关闭。结论长期有效时，再开记忆 PR；属于 Ora 产品架构的，提议在 [ora-space/specs](https://github.com/ora-space/specs) 写 ADR。
 
 ## 写入边界

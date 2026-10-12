@@ -16,10 +16,11 @@ import { command as setup } from './setup/index.ts';
 import { command as run } from './run/index.ts';
 import { command as show } from './show/index.ts';
 import { command as sync } from './sync/index.ts';
+import { command as updates } from './updates/index.ts';
 import { command as whoami } from './whoami/index.ts';
 import { command as worktree } from './worktree/index.ts';
 
-export const COMMANDS: Record<string, Command> = { sync, whoami, brief, new: create, run, show, label, assign, depend, close, cleanup, worktree, memory, setup, bot };
+export const COMMANDS: Record<string, Command> = { sync, whoami, brief, new: create, run, show, updates, label, assign, depend, close, cleanup, worktree, memory, setup, bot };
 
 export function help(): string {
   const lines = Object.values(COMMANDS).map((c) => '  ' + c.usage.split('\n').join('\n  '));
