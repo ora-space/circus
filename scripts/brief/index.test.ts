@@ -76,9 +76,9 @@ test('brief pages through GraphQL and keeps only open blockers', () => {
   });
   const { ctx, calls, lines } = fakeContext((args, input) => {
     if (args[1] === 'user') return 'me\n';
-    return JSON.parse(input!).variables.after ? page([node(2)], null) : page([node(1, [[2, 'OPEN'], [3, 'CLOSED']])], 'c1');
+    return JSON.parse(input!).variables.after ? page([node(2)], null) : page([node(1, [[5, 'OPEN'], [3, 'CLOSED'], [2, 'OPEN']])], 'c1');
   });
   command.run(['--mine'], ctx);
   assert.equal(calls.length, 3);
-  assert.match(lines[0], /- #1 t1（等待 #2）  @me\n- #2 t2  @me/);
+  assert.match(lines[0], /- #1 t1（等待 #2 #5）  @me\n- #2 t2  @me/);
 });

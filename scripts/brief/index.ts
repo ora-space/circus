@@ -124,7 +124,10 @@ export function fetchOpen(run: Parameters<typeof graphql>[0], repo: string): Lis
         author: n.author?.login ?? 'ghost',
         assignees: n.assignees.nodes.map((a) => a.login),
         labels: n.labels.nodes.map((l) => l.name),
-        waitingOn: n.blockedBy.nodes.filter((b) => b.state === 'OPEN').map((b) => b.number),
+        waitingOn: n.blockedBy.nodes
+          .filter((b) => b.state === 'OPEN')
+          .map((b) => b.number)
+          .sort((a, b) => a - b),
       });
     }
     after = pageInfo.hasNextPage ? pageInfo.endCursor : null;
