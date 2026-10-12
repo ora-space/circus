@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyLabels, isKnown, labelsFromBody, type LabelFamily } from './labels.ts';
-import { hasSummary, withSummary } from './summary.ts';
+import { hasSummary, splitSummary, withSummary } from './summary.ts';
+import { parentOf, runBody } from './run.ts';
 import { parseEnv } from './config.ts';
 
 const families: LabelFamily[] = [
@@ -45,4 +46,17 @@ test('withSummary prepends a summary and replaces an earlier one', () => {
 
 test('parseEnv reads KEY=value lines', () => {
   assert.deepEqual(parseEnv('# c\r\nA=1\nB= x \n'), { A: '1', B: 'x' });
+});
+
+test('splitSummary separates the summary from the original body', () => {
+  assert.deepEqual(splitSummary('## 总结\n\nS\n\n---\n\nO'), { summary: 'S', original: 'O' });
+  assert.deepEqual(splitSummary('plain'), { summary: '', original: 'plain' });
+});
+
+test('parentOf reads the first line of the original body, even after a summary', () => {
+  assert.equal(parentOf('Parent: #12\n\nwork'), 12);
+  assert.equal(parentOf(withSummary('Parent: #12\n\nwork', 'done')), 12);
+  assert.equal(parentOf('see\nParent: #12'), null);
+  assert.equal(runBody(3, ' notes '), 'Parent: #3\n\nnotes');
+  assert.equal(runBody(3, ''), 'Parent: #3');
 });

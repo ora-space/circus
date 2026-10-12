@@ -1,8 +1,10 @@
 import { parseArgs } from 'node:util';
 import type { Command } from '../lib/context.ts';
+import { parentOf } from '../lib/run.ts';
 
 const usage = `brief [--mine]
-    列出未关闭的 issue：我负责的（我是作者或 assignee）在前，其余在后。--mine 只看我负责的。`;
+    列出未关闭的 issue：我负责的（我是作者或 assignee）在前，其余在后；运行 issue 标出 parent。
+    --mine 只看我负责的。`;
 
 export interface ListedIssue {
   number: number;
@@ -10,6 +12,7 @@ export interface ListedIssue {
   author: { login: string };
   assignees: { login: string }[];
   labels: { name: string }[];
+  body: string;
 }
 
 const mine = (i: ListedIssue, me: string) => i.author.login === me || i.assignees.some((a) => a.login === me);
@@ -17,7 +20,8 @@ const mine = (i: ListedIssue, me: string) => i.author.login === me || i.assignee
 function line(i: ListedIssue): string {
   const who = `@${i.author.login}${i.assignees.length ? ` → ${i.assignees.map((a) => `@${a.login}`).join(' ')}` : ''}`;
   const labels = i.labels.length ? ` [${i.labels.map((l) => l.name).join(' ')}]` : '';
-  return `- #${i.number} ${i.title}  ${who}${labels}`;
+  const parent = parentOf(i.body);
+  return `- #${i.number} ${i.title}${parent === null ? '' : `（运行 → #${parent}）`}  ${who}${labels}`;
 }
 
 export function format(issues: ListedIssue[], me: string, onlyMine: boolean): string {
@@ -35,7 +39,7 @@ export const command: Command = {
     const { values } = parseArgs({ args, options: { mine: { type: 'boolean', default: false } } });
     const me = ctx.gh(['api', 'user', '--jq', '.login']).trim();
     const issues = JSON.parse(
-      ctx.gh(['issue', 'list', '-R', ctx.repo, '--state', 'open', '--limit', '1000', '--json', 'number,title,author,assignees,labels']),
+      ctx.gh(['issue', 'list', '-R', ctx.repo, '--state', 'open', '--limit', '1000', '--json', 'number,title,author,assignees,labels,body']),
     ) as ListedIssue[];
     ctx.out(format(issues, me, values.mine));
   },

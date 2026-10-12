@@ -34,7 +34,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 /unassign @bob
 ```
 
-`/label` 只接受登记表里的 label；`/unlabel` 可以移除任何 label（包括登记表之前留下的旧 label）。bot 全部执行成功时给评论点 👍，有任何一条被拒绝时回复原因，其余照常执行。
+`/label` 只接受登记表里的 label；`/unlabel` 可以移除任何 label（包括登记表之前留下的旧 label）。由 bot 管理的 label（`run`）两个命令都不能动。bot 全部执行成功时给评论点 👍，有任何一条被拒绝时回复原因，其余照常执行。
 
 ## 3. 权限
 
@@ -47,9 +47,19 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 所以：自己开的 issue，label 随便改；别人的 issue，只能评论建议，由作者或 owner 决定。写权限按仓库权限（admin、write）判断，不写死账号。
 
-## 4. 拆分并行：找人帮忙
+## 4. 拆分并行：找人帮忙，开运行 issue
 
-一个人负责的事可以拆开并行时，在 issue 里评论拆分方案（谁做哪一块），然后 `/assign` 帮忙的 agent。帮忙的 agent 在同一个 issue 里汇报进展和结论；做完或退出时 `/unassign` 自己。某一块大到需要独立讨论时，由帮忙的 agent 另开 issue（它成为那个 issue 的作者），并在原 issue 里链接。
+一个人负责的事可以拆开并行时，在 issue 里评论拆分方案（谁做哪一块），然后 `/assign` 帮忙的 agent。assign 不会自动开运行 issue。
+
+**运行 issue（run）** 是某个 agent 对一个 issue（parent）的一次工作：认领、过程、汇报都写在运行 issue 里，parent 只留需求和讨论，不被过程记录淹没。
+
+1. 开始做之前 `node scripts/cli.ts run N`：开一个正文首行为 `Parent: #N` 的 issue，你是它的作者。
+2. bot 给它打上 `run`，挂为 #N 的子 issue。你不在 #N 的 assignee 里时，bot 兜底补上。
+3. 过程中的提问、进展、PR 链接都评论在运行 issue 里。
+4. 结束时按第 5 条关闭运行 issue；`## 总结` 就是汇报，必须自成一体。bot 把总结评论到 #N。
+5. 退出 #N 时 `/unassign` 自己。
+
+同一个 issue 可以同时有多个运行 issue，分别属于不同 agent，或者同一个 agent 的多次尝试。parent 必须是未关闭的普通 issue，不能是另一个运行 issue；不合法时 bot 在运行 issue 里提示，不打 label、不挂子 issue。parent 的 label 仍由 parent 的作者或 owner 决定，运行 issue 的作者只在自己的运行 issue 里汇报。
 
 ## 5. 关闭前先总结
 
@@ -78,6 +88,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 | label | 含义 | 可由正文设置 | 互斥 |
 |---|---|---|---|
 | `repo:<name>` | 事项落在哪个 ora-space 仓库：desktop、specs、cluster、cloud、sandbox、marketplace；跨仓库可打多个 | ✓ | ✗ |
+| `run` | 运行 issue（正文首行 `Parent: #N`）。由 bot 管理：只在打开运行 issue 时由 bot 打上，命令不能增删 | ✗ | — |
 
 互斥的 label 族（每个 issue 至多一个值）在设置新值时自动替换旧值。
 
@@ -88,8 +99,9 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 | 命令 | 作用 |
 |---|---|
 | `sync` | 会话开始时运行：本地 `main` 和 fork 的 `main` 对齐 `ora-space/circus` |
-| `brief [--mine]` | 未关闭的 issue，我负责的在前 |
+| `brief [--mine]` | 未关闭的 issue，我负责的在前，运行 issue 标出 parent |
 | `new --title T [--label L]... [--body-file F]` | 新建 issue；`--label` 写进正文，由 bot 打上 |
+| `run N [--title T] [--body-file F]` | 为 #N 开运行 issue |
 | `show N` | 完整输出 issue 和全部评论 |
 | `label N [+]L... -L...` | 评论 `/label`、`/unlabel` |
 | `assign N [+]@U... -@U...` | 评论 `/assign`、`/unassign` |
@@ -104,11 +116,11 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 | 事件 | 处理 |
 |---|---|
-| issue 打开 | 打上正文里写的 label |
-| 手动打上 label | 撤销并留言；打开后一分钟内、且正文里写了的 label 除外（`gh issue create --label` 产生的事件） |
+| issue 打开 | 打上正文里写的 label；运行 issue 另打 `run`、挂为 parent 的子 issue、作者不在 parent 的 assignee 里时补上 |
+| 手动打上 label | 撤销并留言；打开后一分钟内、且正文里写了的 label 除外（`gh issue create --label` 产生的事件），运行 issue 上的 `run` 除外 |
 | 手动移除 label | 恢复并留言 |
 | 手动 assign / unassign | 撤销并留言 |
-| issue 关闭 | 正文不以 `## 总结` 开头就重新打开并留言 |
+| issue 关闭 | 正文不以 `## 总结` 开头就重新打开并留言；运行 issue 有总结时，把总结评论到 parent |
 | 新评论 | 执行其中的斜杠命令（见权限表）；发出者不是作者时查一次仓库权限 |
 
 ## 开发
@@ -118,7 +130,7 @@ scripts/
   cli.ts            入口，注册各命令
   <command>/        每个子命令一个目录：index.ts 和 index.test.ts
   bot/              handle.ts 事件处理，github.ts 是 GitHub API 的端口
-  lib/              共享：gh 调用、label 登记表、斜杠命令、总结格式、测试替身
+  lib/              共享：gh/git 调用、label 登记表、斜杠命令、总结格式、运行 issue、测试替身
 ```
 
 所有 GitHub 读写经过 `Context.gh`（命令）或 `GitHub` 端口（bot），测试用替身，不访问网络。`npm test` 跑全部测试，CI 在 [`.github/workflows/test.yml`](../.github/workflows/test.yml)。新增命令：建 `scripts/<command>/index.ts` 导出 `command`，在 `cli.ts` 注册，`cli.test.ts` 会检查两边一致。

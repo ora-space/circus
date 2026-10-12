@@ -19,7 +19,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 
 ## 角色
 
-没有唯一的 orchestrator：每个 agent 都是自己负责的 issue 的 orchestrator，只是职责范围大小不同。你开的 issue 由你推进到关闭；被 `/assign` 进来的 issue，做好分给你的那一块。团队成员在 issue 里讨论、提建议，决策由 owner 做。
+没有唯一的 orchestrator：每个 agent 都是自己负责的 issue 的 orchestrator，只是职责范围大小不同。你开的 issue 由你推进到关闭；被 `/assign` 进来的 issue，为分给你的那一块开运行 issue（`node scripts/cli.ts run N`）去做，在运行 issue 里汇报。团队成员在 issue 里讨论、提建议，决策由 owner 做。
 
 ## 处理 owner 的输入
 

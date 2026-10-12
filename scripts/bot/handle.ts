@@ -2,12 +2,14 @@
 //   - sets labels written in the body when an issue opens,
 //   - applies slash commands from comments, checking who may run them,
 //   - reverts label and assignee changes made by hand,
-//   - reopens issues closed without a summary.
+//   - reopens issues closed without a summary,
+//   - links runs to their parent and reports their summary back (see lib/run.ts).
 // Events caused by bots (including itself) are ignored, so its own writes do not loop.
 import type { GitHub, Issue } from './github.ts';
-import { applyLabels, isKnown, labelsFromBody } from '../lib/labels.ts';
+import { applyLabels, isBotLabel, isKnown, labelsFromBody } from '../lib/labels.ts';
+import { parentOf, RUN_LABEL } from '../lib/run.ts';
 import { parseSlash, type SlashCommand } from '../lib/slash.ts';
-import { hasSummary, SUMMARY_HEADING } from '../lib/summary.ts';
+import { hasSummary, splitSummary, SUMMARY_HEADING } from '../lib/summary.ts';
 
 export interface Event {
   name: string; // GITHUB_EVENT_NAME
@@ -59,13 +61,17 @@ function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashC
       errors.push(`${line}：${denied}`);
       continue;
     }
+    const managed = cmd.args.filter(isBotLabel);
+    if ((cmd.verb === 'label' || cmd.verb === 'unlabel') && managed.length) {
+      errors.push(`${line}：${managed.join(' ')} 由 bot 管理`);
+    }
     if (cmd.verb === 'label') {
-      const unknown = cmd.args.filter((l) => !isKnown(l));
+      const unknown = cmd.args.filter((l) => !isKnown(l) && !isBotLabel(l));
       if (unknown.length) errors.push(`${line}：未登记的 label ${unknown.join(' ')}`);
       add.push(...cmd.args.filter((l) => isKnown(l)));
     } else if (cmd.verb === 'unlabel') {
-      // Any label may be removed, including ones from before the registry.
-      remove.push(...cmd.args);
+      // Any other label may be removed, including ones from before the registry.
+      remove.push(...cmd.args.filter((l) => !isBotLabel(l)));
     } else if (cmd.verb === 'assign') {
       const after = gh.addAssignees(issue.number, cmd.args);
       const skipped = cmd.args.filter((u) => !after.includes(u));
@@ -82,6 +88,31 @@ function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashC
   return errors;
 }
 
+// Bot-set labels an issue should carry, judged from its body.
+const expectedBotLabels = (issue: Issue) => (parentOf(issue.body) !== null ? [RUN_LABEL] : []);
+
+function openRun(gh: GitHub, run: Issue, parent: number): void {
+  let item: Issue | null = null;
+  try {
+    item = gh.getIssue(parent);
+  } catch {
+    // Missing parent: reported below.
+  }
+  if (!item || item.pull_request || item.state !== 'open' || parentOf(item.body) !== null) {
+    gh.comment(run.number, `#${parent} 不是未关闭的普通 issue，不能作为 parent。请关闭本 issue，修正首行的 \`Parent: #N\` 后重新开。`);
+    return;
+  }
+  const current = names(gh.getIssue(run.number));
+  const next = applyLabels(current, [...labelsFromBody(run.body), RUN_LABEL], []);
+  if (next.join('\n') !== current.join('\n')) gh.setLabels(run.number, next);
+  gh.addSubIssue(parent, run.id);
+  // Fallback for runs opened without a prior /assign on the parent.
+  const author = run.user.login;
+  if (!logins(item).includes(author) && !gh.addAssignees(parent, [author]).includes(author)) {
+    gh.comment(run.number, `无法把 @${author} assign 到 #${parent}（不是协作者？）。`);
+  }
+}
+
 const REVERT_HINT = 'label 和 assignee 只能由 bot 修改：在评论里写 `/label`、`/unlabel`、`/assign`、`/unassign`。';
 
 export function handle(event: Event, gh: GitHub): void {
@@ -92,6 +123,8 @@ export function handle(event: Event, gh: GitHub): void {
 
   switch (`${event.name}.${action}`) {
     case 'issues.opened': {
+      const parent = parentOf(issue.body);
+      if (parent !== null) return openRun(gh, issue, parent);
       const wanted = labelsFromBody(issue.body);
       if (!wanted.length) return;
       const current = names(gh.getIssue(n));
@@ -103,6 +136,7 @@ export function handle(event: Event, gh: GitHub): void {
       const label: string = event.payload.label.name;
       const opening = Date.parse(issue.updated_at) - Date.parse(issue.created_at) < OPENING_MS;
       if (opening && labelsFromBody(issue.body).includes(label)) return;
+      if (expectedBotLabels(issue).includes(label)) return;
       const current = names(gh.getIssue(n));
       if (!current.includes(label)) return;
       gh.setLabels(n, current.filter((l) => l !== label));
@@ -130,7 +164,14 @@ export function handle(event: Event, gh: GitHub): void {
       return;
     }
     case 'issues.closed': {
-      if (hasSummary(issue.body)) return;
+      if (hasSummary(issue.body)) {
+        const parent = parentOf(issue.body);
+        if (parent !== null) {
+          const { summary } = splitSummary(issue.body);
+          gh.comment(parent, `运行 #${n}（@${issue.user.login}）已结束：**${issue.title}**\n\n${summary}`);
+        }
+        return;
+      }
       gh.reopen(n);
       gh.comment(
         n,

@@ -13,6 +13,7 @@ test('ghGitHub maps the port onto REST calls through gh api', () => {
   gh.react(9, '+1');
   gh.reopen(3);
   assert.equal(gh.permission('bob'), 'write');
+  gh.addSubIssue(3, 77);
   assert.deepEqual(
     calls.map((c) => `${c.args[2]} ${c.args[3]} ${c.input}`),
     [
@@ -21,6 +22,7 @@ test('ghGitHub maps the port onto REST calls through gh api', () => {
       'POST repos/o/r/issues/comments/9/reactions {"content":"+1"}',
       'PATCH repos/o/r/issues/3 {"state":"open"}',
       'GET repos/o/r/collaborators/bob/permission undefined',
+      'POST repos/o/r/issues/3/sub_issues {"sub_issue_id":77}',
     ],
   );
 });

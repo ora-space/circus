@@ -2,7 +2,9 @@
 import { api, type Gh } from '../lib/gh.ts';
 
 export interface Issue {
+  id: number;
   number: number;
+  title: string;
   state: string;
   body: string | null;
   created_at: string;
@@ -23,6 +25,7 @@ export interface GitHub {
   comment(n: number, body: string): void;
   react(commentId: number, content: string): void;
   reopen(n: number): void;
+  addSubIssue(parent: number, childId: number): void;
   // Repository permission of a user: admin, write, read or none.
   permission(login: string): string;
 }
@@ -38,6 +41,7 @@ export function ghGitHub(gh: Gh, repo: string): GitHub {
     comment: (n, body) => void api(gh, 'POST', `${base}/${n}/comments`, { body }),
     react: (id, content) => void api(gh, 'POST', `${base}/comments/${id}/reactions`, { content }),
     reopen: (n) => void api(gh, 'PATCH', `${base}/${n}`, { state: 'open' }),
+    addSubIssue: (parent, childId) => void api(gh, 'POST', `${base}/${parent}/sub_issues`, { sub_issue_id: childId }),
     permission: (login) => api<{ permission: string }>(gh, 'GET', `repos/${repo}/collaborators/${login}/permission`).permission,
   };
 }

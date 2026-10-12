@@ -3,47 +3,67 @@ import assert from 'node:assert/strict';
 import { authorize, handle } from './handle.ts';
 import type { GitHub, Issue } from './github.ts';
 
-// In-memory issue store that records writes.
+const newIssue = (fields: Partial<Issue>): Issue => ({
+  id: 1000 + (fields.number ?? 1),
+  number: 1,
+  title: 'T',
+  state: 'open',
+  body: '',
+  created_at: '2026-10-01T00:00:00Z',
+  updated_at: '2026-10-01T00:00:00Z',
+  user: { login: 'alice' },
+  assignees: [],
+  labels: [],
+  ...fields,
+});
+
+// In-memory issue store that records writes. `state` is issue #1; `add` puts more issues
+// in the store. Writes to #1 are logged bare, writes to other issues are prefixed "#n ".
 function fakeGitHub(issue: Partial<Issue> = {}, assignable = ['alice', 'bob', 'carol', 'owner'], writers = ['owner']) {
-  const state: Issue = {
-    number: 1,
-    state: 'open',
-    body: '',
-    created_at: '2026-10-01T00:00:00Z',
-    updated_at: '2026-10-01T00:00:00Z',
-    user: { login: 'alice' },
-    assignees: [],
-    labels: [],
-    ...issue,
-  };
+  const store = new Map<number, Issue>();
+  const state = newIssue(issue);
+  store.set(state.number, state);
   const log: string[] = [];
+  const at = (n: number) => {
+    const i = store.get(n);
+    if (!i) throw new Error(`HTTP 404 #${n}`);
+    return i;
+  };
+  const push = (n: number, entry: string) => log.push(n === 1 ? entry : `#${n} ${entry}`);
   const gh: GitHub = {
-    getIssue: () => structuredClone(state),
-    setLabels: (_n, labels) => {
-      log.push(`labels ${labels.join(' ')}`);
-      state.labels = labels.map((name) => ({ name }));
+    getIssue: (n) => structuredClone(at(n)),
+    setLabels: (n, labels) => {
+      push(n, `labels ${labels.join(' ')}`);
+      at(n).labels = labels.map((name) => ({ name }));
     },
-    addAssignees: (_n, users) => {
-      log.push(`assign ${users.join(' ')}`);
-      for (const u of users) if (assignable.includes(u) && !state.assignees.some((a) => a.login === u)) state.assignees.push({ login: u });
-      return state.assignees.map((a) => a.login);
+    addAssignees: (n, users) => {
+      push(n, `assign ${users.join(' ')}`);
+      const i = at(n);
+      for (const u of users) if (assignable.includes(u) && !i.assignees.some((a) => a.login === u)) i.assignees.push({ login: u });
+      return i.assignees.map((a) => a.login);
     },
-    removeAssignees: (_n, users) => {
-      log.push(`unassign ${users.join(' ')}`);
-      state.assignees = state.assignees.filter((a) => !users.includes(a.login));
+    removeAssignees: (n, users) => {
+      push(n, `unassign ${users.join(' ')}`);
+      at(n).assignees = at(n).assignees.filter((a) => !users.includes(a.login));
     },
-    comment: (_n, body) => void log.push(`comment ${body}`),
+    comment: (n, body) => void push(n, `comment ${body}`),
     react: (id, content) => void log.push(`react ${id} ${content}`),
-    reopen: () => {
-      log.push('reopen');
-      state.state = 'open';
+    reopen: (n) => {
+      push(n, 'reopen');
+      at(n).state = 'open';
     },
     permission: (login) => {
       log.push(`permission ${login}`);
       return writers.includes(login) ? 'admin' : 'read';
     },
+    addSubIssue: (parent, childId) => void push(parent, `sub-issue ${childId}`),
   };
-  return { gh, state, log };
+  const add = (fields: Partial<Issue>) => {
+    const i = newIssue(fields);
+    store.set(i.number, i);
+    return i;
+  };
+  return { gh, state, log, add };
 }
 
 const user = (login: string) => ({ login, type: 'User' });
@@ -170,4 +190,62 @@ test('authorize lets the author do everything without a permission lookup', () =
   for (const verb of ['label', 'unlabel', 'assign', 'unassign'] as const) {
     assert.equal(authorize({ verb, args: ['x'] }, 'alice', issue, never), null);
   }
+});
+
+// Runs: issue #1 is the parent, #2 the run.
+const opened = (f: ReturnType<typeof fakeGitHub>, run: Issue) =>
+  handle({ name: 'issues', payload: { action: 'opened', issue: run, sender: user(run.user.login) } }, f.gh);
+
+test('opened run: labelled, linked as sub-issue, author added to the parent assignees', () => {
+  const f = fakeGitHub({ assignees: [{ login: 'alice' }] });
+  const run = f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1\n\nrepo:desktop' });
+  opened(f, run);
+  assert.deepEqual(f.log, ['#2 labels repo:desktop run', 'sub-issue 1002', 'assign bob']);
+});
+
+test('opened run by an existing assignee does not reassign', () => {
+  const f = fakeGitHub({ assignees: [{ login: 'bob' }] });
+  opened(f, f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1' }));
+  assert.deepEqual(f.log, ['#2 labels run', 'sub-issue 1002']);
+});
+
+test('opened run with an invalid parent is told to fix it', () => {
+  for (const parent of [{ state: 'closed' }, { body: 'Parent: #9' }]) {
+    const f = fakeGitHub(parent);
+    opened(f, f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1' }));
+    assert.equal(f.log.length, 1);
+    assert.match(f.log[0], /^#2 comment #1 不是未关闭的普通 issue/);
+  }
+  const f = fakeGitHub();
+  opened(f, f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #7' }));
+  assert.match(f.log[0], /^#2 comment #7 不是/);
+});
+
+test('opened run reports an author who cannot be assigned', () => {
+  const f = fakeGitHub({}, ['alice']);
+  opened(f, f.add({ number: 2, user: { login: 'mallory' }, body: 'Parent: #1' }));
+  assert.match(f.log.at(-1)!, /^#2 comment 无法把 @mallory assign 到 #1/);
+});
+
+test('closed run with a summary reports it on the parent', () => {
+  const f = fakeGitHub();
+  const run = f.add({ number: 2, title: '前端部分已完成', user: { login: 'bob' }, state: 'closed', body: '## 总结\n\n改了 A\n\n---\n\nParent: #1' });
+  handle({ name: 'issues', payload: { action: 'closed', issue: run, sender: user('bob') } }, f.gh);
+  assert.deepEqual(f.log, ['comment 运行 #2（@bob）已结束：**前端部分已完成**\n\n改了 A']);
+});
+
+test('the run label is kept on runs, reverted elsewhere, and refused by commands', () => {
+  const f = fakeGitHub();
+  const run = f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1', labels: [{ name: 'run' }], updated_at: '2026-10-05T00:00:00Z' });
+  handle({ name: 'issues', payload: { action: 'labeled', issue: run, sender: user('bob'), label: { name: 'run' } } }, f.gh);
+  assert.deepEqual(f.log, []);
+  f.state.labels = [{ name: 'run' }];
+  handle({ name: 'issues', payload: { action: 'labeled', issue: f.state, sender: user('alice'), label: { name: 'run' } } }, f.gh);
+  assert.equal(f.log[0], 'labels ');
+  f.log.length = 0;
+  commentEvent(f, 'alice', '/label run repo:desktop\n/unlabel run');
+  assert.equal(f.log[0], 'labels repo:desktop');
+  assert.match(f.log[1], /`\/label run repo:desktop`：run 由 bot 管理/);
+  assert.match(f.log[1], /`\/unlabel run`：run 由 bot 管理/);
+  assert.doesNotMatch(f.log[1], /未登记/);
 });

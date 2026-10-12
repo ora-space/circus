@@ -23,6 +23,11 @@ export const FAMILIES: readonly LabelFamily[] = [
   },
 ];
 
+// Labels without a value that only the bot sets and removes; no command can change them.
+export const BOT_LABELS = [{ name: 'run', description: '一次运行：正文首行 Parent: #N', color: '5319e7' }] as const;
+
+export const isBotLabel = (label: string) => BOT_LABELS.some((l) => l.name === label);
+
 export function familyOf(label: string, families = FAMILIES): LabelFamily | undefined {
   const i = label.indexOf(':');
   if (i < 0) return undefined;
@@ -32,10 +37,11 @@ export function familyOf(label: string, families = FAMILIES): LabelFamily | unde
 
 export const isKnown = (label: string, families = FAMILIES) => familyOf(label, families) !== undefined;
 
-export function allLabels(families = FAMILIES) {
-  return families.flatMap((f) =>
-    f.values.map((v) => ({ name: `${f.prefix}:${v}`, description: f.description, color: f.color })),
-  );
+export function allLabels(families = FAMILIES): { name: string; description: string; color: string }[] {
+  return [
+    ...families.flatMap((f) => f.values.map((v) => ({ name: `${f.prefix}:${v}`, description: f.description, color: f.color }))),
+    ...BOT_LABELS,
+  ];
 }
 
 // Text outside fenced code blocks, so examples in code do not set labels.
