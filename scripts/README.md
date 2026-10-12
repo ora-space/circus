@@ -151,6 +151,7 @@ circus/
 | `type:task` `type:bug` `type:decision` `type:question` `type:idea` | 类型：需要动手的工作、缺陷、等 owner 拍板的决策、待调研或待澄清的问题、未决定做不做的建议 | ✓ | ✓ |
 | `status:needs-owner` | 等 owner 回复、决策或授权 | ✓ | ✓ |
 | `status:in-review` | PR 待 owner 审 | ✓ | ✓ |
+| `status:needs-author` | owner 已回复、决定或提出要求，等作者跟进 | ✓ | ✓ |
 | `priority:p0`–`p3` | 优先级：立即、高、中、低；不设就是没有优先级 | ✓ | ✓ |
 | `repo:<name>` | 事项落在哪个 ora-space 仓库：desktop、specs、cluster、cloud、sandbox、marketplace；跨仓库可打多个 | ✓ | ✗ |
 | `run` | 运行 issue（正文首行 `Parent: #N`）。由 bot 管理：只在打开运行 issue 时由 bot 打上，命令不能增删 | ✗ | — |
@@ -158,7 +159,10 @@ circus/
 互斥的 label 族（每个 issue 至多一个值）在设置新值时自动替换旧值。
 
 - **`type:decision` 有长期价值。** 决策 issue 关闭后，标题和 `## 总结` 写明结论和理由，以后要查"当初为什么这么定"，用 `gh issue list -R ora-space/circus --state closed --label type:decision --search "<关键词>"` 就能找到。所以凡是要 owner 拍板的，都开成 `type:decision`：正文列选项、依据、代价，同时打 `status:needs-owner`。
-- **status 只表示"等 owner"。** 其余状态不用 label：在做 = 有未关闭的运行 issue，完成 = issue 已关闭。issue 关闭时 bot 移除它的 `status:*`。等 owner 的事，作者给自己的 issue 打 `status:needs-owner`；运行 issue 的作者改不了 parent，就打在自己的运行 issue 上。owner 处理完后由作者或 owner `/unlabel`。
+- **status 只表示"球在谁手里"。** 其余状态不用 label：在做 = 有未关闭的运行 issue，完成 = issue 已关闭。issue 关闭时 bot 移除它的 `status:*`。
+  - 等 owner 的事，作者给自己的 issue 打 `status:needs-owner`（PR 待审打 `status:in-review`）；运行 issue 的作者改不了 parent，就打在自己的运行 issue 上。
+  - owner 回复、拍板或提出要求后，打 `/label status:needs-author`，它会替换掉 `needs-owner`，作者的 `brief` 会把这个 issue 放进"等我跟进"。只是顺手评论、不需要作者动作时，直接 `/unlabel status:needs-owner`。
+  - 作者跟进后 `/unlabel status:needs-author`，或者需要 owner 再看时改回 `status:needs-owner`。
 
 ## CLI
 
@@ -168,7 +172,7 @@ circus/
 |---|---|
 | `sync` | 会话开始时运行：本地 `main` 和 fork 的 `main` 对齐 `ora-space/circus` |
 | `whoami` | 当前账号是 owner 还是成员，也就是和 agent 对话的人 |
-| `brief [--mine]` | 先说明身份，再列未关闭的 issue，分四组：待关闭（我创建的，关联 PR 已合并、被 bot 重新打开过、或 parent 已关闭的运行 issue，最优先处理）；等 owner 的（owner 看到所有人的 `status:needs-owner` 和 `status:in-review`，成员只看到自己创建的 `status:needs-owner`）；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
+| `brief [--mine]` | 先说明身份，再列未关闭的 issue，分五组，空组不显示：待关闭（我创建的，关联 PR 已合并、被 bot 重新打开过、或 parent 已关闭的运行 issue，最优先处理）；等我跟进（我创建的 `status:needs-author`）；等 owner 的（owner 看到所有人的 `status:needs-owner` 和 `status:in-review`，成员只看到自己创建的 `status:needs-owner`）；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
 | `new --title T [--label L]... [--depend N]... [--epic N] [--body-file F]` | 新建 issue；`--label`、`--depend` 写进正文，由 bot 打上、设为依赖；`--epic` 写"总事项：#N" |
 | `run N [--title T] [--body-file F]` | 为 #N 开运行 issue |
 | `show N` | 完整输出 issue 和全部评论 |
@@ -189,7 +193,7 @@ circus/
 | 看板 Status | 来自 |
 |---|---|
 | Done | issue 已关闭 |
-| Needs Owner / In Review | `status:needs-owner` / `status:in-review` |
+| Needs Owner / In Review / Needs Author | `status:needs-owner` / `status:in-review` / `status:needs-author` |
 | Blocked | 有未关闭的依赖 |
 | Running | 有未关闭的运行 issue |
 | Open | 其余 |

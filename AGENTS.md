@@ -33,7 +33,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 3. **新建 issue**：功能和 bug 按 [接收新需求](scripts/README.md#6-接收新需求和-bug) 先问必要的问题，重新组织成标题和正文，`node scripts/cli.ts new` 后开始调研，发现都评论到 issue。
 4. **记忆 PR**：用户表达了长期成立的规则、方法或偏好时，按 [`memory/README.md`](memory/README.md) 开 PR；是否合并由 owner 决定。
 
-**决策**是最需要留痕的输入：待决的开成 `type:decision` 并打 `status:needs-owner`，正文列选项、依据、代价，请 owner 拍板；拍板后按 [关闭前先总结](scripts/README.md#5-关闭前先总结) 关闭。结论长期有效时，再开记忆 PR；属于 Ora 产品架构的，提议在 [ora-space/specs](https://github.com/ora-space/specs) 写 ADR。
+**决策**是最需要留痕的输入：待决的开成 `type:decision` 并打 `status:needs-owner`，正文列选项、依据、代价，请 owner 拍板。owner 拍板时在 issue 里写下结论，并 `/label status:needs-author` 提醒作者跟进；作者按结论处理完，按 [关闭前先总结](scripts/README.md#5-关闭前先总结) 关闭。结论长期有效时，再开记忆 PR；属于 Ora 产品架构的，提议在 [ora-space/specs](https://github.com/ora-space/specs) 写 ADR。
 
 ## 写入边界
 

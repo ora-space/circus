@@ -9,11 +9,16 @@ export const STATUS_OPTIONS = [
   { name: 'Running', color: 'YELLOW', description: '有运行 issue 在做' },
   { name: 'Needs Owner', color: 'RED', description: '等 owner 回复、决策或授权' },
   { name: 'In Review', color: 'PURPLE', description: 'PR 待 owner 审' },
+  { name: 'Needs Author', color: 'BLUE', description: 'owner 已回复，等作者跟进' },
   { name: 'Done', color: 'GREEN', description: '已关闭' },
 ] as const;
 export const PRIORITY_OPTIONS = ['P0', 'P1', 'P2', 'P3'] as const;
 
-const STATUS_BY_LABEL: Record<string, string> = { 'status:needs-owner': 'Needs Owner', 'status:in-review': 'In Review' };
+const STATUS_BY_LABEL: Record<string, string> = {
+  'status:needs-owner': 'Needs Owner',
+  'status:in-review': 'In Review',
+  'status:needs-author': 'Needs Author',
+};
 
 export type BoardValues = { Status: string; Priority?: string };
 

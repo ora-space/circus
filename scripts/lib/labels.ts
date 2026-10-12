@@ -32,9 +32,13 @@ export const FAMILIES: readonly LabelFamily[] = [
   },
   {
     prefix: 'status',
-    values: ['needs-owner', 'in-review'],
-    description: '等 owner',
-    descriptions: { 'needs-owner': '等 owner 回复、决策或授权', 'in-review': 'PR 待 owner 审' },
+    values: ['needs-owner', 'in-review', 'needs-author'],
+    description: '等谁处理',
+    descriptions: {
+      'needs-owner': '等 owner 回复、决策或授权',
+      'in-review': 'PR 待 owner 审',
+      'needs-author': 'owner 已回复、决定或提出要求，等作者跟进',
+    },
     color: 'fbca04',
     exclusive: true,
     fromBody: true,

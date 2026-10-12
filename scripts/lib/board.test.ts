@@ -8,6 +8,7 @@ const labels = (...names: string[]) => names.map((name) => ({ name }));
 test('boardValues: open dependencies make Blocked, above Running but below status labels', () => {
   assert.deepEqual(boardValues({ state: 'open', labels: [] }, 1, 2), { Status: 'Blocked' });
   assert.deepEqual(boardValues({ state: 'open', labels: labels('status:needs-owner') }, 0, 2), { Status: 'Needs Owner' });
+  assert.deepEqual(boardValues({ state: 'open', labels: labels('status:needs-author') }, 1, 0), { Status: 'Needs Author' });
   assert.deepEqual(boardValues({ state: 'closed', labels: [] }, 0, 2), { Status: 'Done' });
 });
 
@@ -59,7 +60,7 @@ test('sync adds the item and sets each field; missing options only warn', () => 
 test('sync falls back to the existing item when a concurrent add won', () => {
   const { ctx, calls } = fakeContext(graphqlStub([status], 'Content already exists in this project'));
   ghBoard(ctx.gh, 'ora-space', 4).sync('ISSUE', { Status: 'Done' });
-  assert.deepEqual(updates(calls), [{ p: 'P', i: 'I2', f: 'FS', o: 's5' }]);
+  assert.deepEqual(updates(calls), [{ p: 'P', i: 'I2', f: 'FS', o: 's6' }]);
 });
 
 test('the first sync fixes Status options and creates Priority, then reloads', () => {
@@ -71,7 +72,7 @@ test('the first sync fixes Status options and creates Priority, then reloads', (
   board.sync('B', { Status: 'Open' });
   const ops = calls.map((c) => /(organization|updateProjectV2Field\(|createProjectV2Field)/.exec(JSON.parse(c.input!).query)?.[1]).filter(Boolean);
   assert.deepEqual(ops, ['organization', 'updateProjectV2Field(', 'createProjectV2Field', 'organization']);
-  assert.deepEqual(warnings.slice(0, 2), ['看板 Status 选项已设为：Open, Blocked, Running, Needs Owner, In Review, Done', '看板已创建 Priority 字段']);
+  assert.deepEqual(warnings.slice(0, 2), ['看板 Status 选项已设为：Open, Blocked, Running, Needs Owner, In Review, Needs Author, Done', '看板已创建 Priority 字段']);
 });
 
 test('fields already in shape are left alone', () => {

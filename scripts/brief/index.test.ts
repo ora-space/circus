@@ -26,8 +26,6 @@ test('brief: my issues waiting on the owner first, then mine by priority, then o
   assert.equal(
     format(issues, 'me', false),
     [
-      '## 待关闭（我创建的） (0)',
-      '',
       '## 等 owner（我创建的） (1)',
       '- #4 blocked  @me [status:needs-owner priority:p1]',
       '',
@@ -58,8 +56,6 @@ test('brief: issues of mine that look done come first, others\' never', () => {
       '- #2 reopened（被 bot 重新打开，补总结后关闭）  @me [status:needs-owner]',
       '- #3 运行：旧事（parent #99 已关闭；运行 → #99）  @me',
       '',
-      '## 等 owner（我创建的） (0)',
-      '',
       '## 我负责的（@me） (2)',
       '- #4 their merged  @bob → @me',
       '- #5 plain  @me',
@@ -86,12 +82,32 @@ test('brief for the owner: everyone\'s issues waiting on the owner come right af
       '- #1 theirs waits  @bob [status:needs-owner]',
       '- #3 mine waits  @me [status:needs-owner]',
       '',
-      '## 我负责的（@me） (0)',
-      '',
       '## 其他 (1)',
       '- #5 plain  @bob',
     ].join('\n'),
   );
+});
+
+test('brief: issues of mine the owner answered come right after the closable ones', () => {
+  const issues = [
+    issue(1, 'answered', 'me', { labels: ['status:needs-author'] }),
+    issue(2, 'their answered', 'bob', { labels: ['status:needs-author'], assignees: ['me'] }),
+    issue(3, 'waiting', 'me', { labels: ['status:needs-owner'] }),
+  ];
+  assert.equal(
+    format(issues, 'me', true),
+    [
+      '## 等我跟进（owner 已回复） (1)',
+      '- #1 answered  @me [status:needs-author]',
+      '',
+      '## 等 owner（我创建的） (1)',
+      '- #3 waiting  @me [status:needs-owner]',
+      '',
+      '## 我负责的（@me） (1)',
+      '- #2 their answered  @bob → @me [status:needs-author]',
+    ].join('\n'),
+  );
+  assert.equal(format([], 'me', false), '没有未关闭的 issue');
 });
 
 test('tree nests sub-items and runs, marks waits, and notes parents outside the section', () => {
