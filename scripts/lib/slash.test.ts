@@ -26,3 +26,12 @@ test('fromSigned splits +/- arguments and formatSlash writes them back', () => {
   assert.equal(formatSlash(fromSigned(['bob', '-@carol'], 'assign', 'unassign')), '/unassign @carol\n/assign @bob');
   assert.deepEqual(parseSlash(formatSlash(cmds)), cmds);
 });
+
+test('depend commands strip and restore "#"', () => {
+  const cmds = parseSlash('/depend #13, 14\n/undepend #15');
+  assert.deepEqual(cmds, [
+    { verb: 'depend', args: ['13', '14'] },
+    { verb: 'undepend', args: ['15'] },
+  ]);
+  assert.equal(formatSlash(fromSigned(['#13', '-#15'], 'depend', 'undepend')), '/undepend #15\n/depend #13');
+});

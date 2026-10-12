@@ -7,6 +7,7 @@ import { command as assign } from './assign/index.ts';
 import { command as bot } from './bot/index.ts';
 import { command as brief } from './brief/index.ts';
 import { command as close } from './close/index.ts';
+import { command as depend } from './depend/index.ts';
 import { command as label } from './label/index.ts';
 import { command as memory } from './memory/index.ts';
 import { command as create } from './new/index.ts';
@@ -16,7 +17,7 @@ import { command as show } from './show/index.ts';
 import { command as sync } from './sync/index.ts';
 import { command as worktree } from './worktree/index.ts';
 
-export const COMMANDS: Record<string, Command> = { sync, brief, new: create, run, show, label, assign, close, worktree, memory, setup, bot };
+export const COMMANDS: Record<string, Command> = { sync, brief, new: create, run, show, label, assign, depend, close, worktree, memory, setup, bot };
 
 export function help(): string {
   const lines = Object.values(COMMANDS).map((c) => '  ' + c.usage.split('\n').join('\n  '));

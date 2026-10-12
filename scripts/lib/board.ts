@@ -1,10 +1,11 @@
 // The board: an org Project that mirrors issues read-only, maintained by the bot alone.
 // Runs are not on it; an issue with open runs shows as Running unless a status label says
-// otherwise. The bot also keeps the Status options and the Priority field in shape.
-import { api, type Gh } from './gh.ts';
+// otherwise, and one with open dependencies as Blocked. The bot also keeps the Status options and the Priority field in shape.
+import { graphql, type Gh } from './gh.ts';
 
 export const STATUS_OPTIONS = [
   { name: 'Open', color: 'GRAY', description: '未关闭，没有运行在做' },
+  { name: 'Blocked', color: 'ORANGE', description: '有未完成的依赖' },
   { name: 'Running', color: 'YELLOW', description: '有运行 issue 在做' },
   { name: 'Needs Owner', color: 'RED', description: '等 owner 回复、决策或授权' },
   { name: 'In Review', color: 'PURPLE', description: 'PR 待 owner 审' },
@@ -16,10 +17,12 @@ const STATUS_BY_LABEL: Record<string, string> = { 'status:needs-owner': 'Needs O
 
 export type BoardValues = { Status: string; Priority?: string };
 
-export function boardValues(issue: { state: string; labels: { name: string }[] }, openRuns: number): BoardValues {
+// Done > status label > Blocked (open dependencies) > Running (open runs) > Open.
+export function boardValues(issue: { state: string; labels: { name: string }[] }, openRuns: number, openBlockers = 0): BoardValues {
   const names = issue.labels.map((l) => l.name);
   const labelled = names.map((l) => STATUS_BY_LABEL[l]).find(Boolean);
-  const status = issue.state === 'closed' ? 'Done' : (labelled ?? (openRuns > 0 ? 'Running' : 'Open'));
+  const derived = openBlockers > 0 ? 'Blocked' : openRuns > 0 ? 'Running' : 'Open';
+  const status = issue.state === 'closed' ? 'Done' : (labelled ?? derived);
   const priority = names.find((l) => l.startsWith('priority:'))?.slice('priority:'.length).toUpperCase();
   return priority ? { Status: status, Priority: priority } : { Status: status };
 }
@@ -34,12 +37,6 @@ interface Field {
   id: string;
   name: string;
   options?: { id: string; name: string }[];
-}
-
-function graphql<T>(gh: Gh, query: string, variables: Record<string, unknown>): T {
-  const res = api<{ data: T; errors?: { message: string }[] }>(gh, 'POST', 'graphql', { query, variables });
-  if (res.errors?.length) throw new Error(res.errors.map((e) => e.message).join('; '));
-  return res.data;
 }
 
 export function ghBoard(gh: Gh, org: string, number: number, warn: (msg: string) => void = console.warn): Board {

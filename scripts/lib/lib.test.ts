@@ -4,6 +4,7 @@ import { applyLabels, isKnown, labelsFromBody, type LabelFamily } from './labels
 import { hasSummary, splitSummary, withSummary } from './summary.ts';
 import { parentOf, runBody } from './run.ts';
 import { parseEnv } from './config.ts';
+import { dependLine, dependsFromBody, epicLine, epicOf } from './deps.ts';
 
 const families: LabelFamily[] = [
   { prefix: 'repo', values: ['desktop', 'specs'], description: '', color: '', exclusive: false, fromBody: true },
@@ -59,4 +60,18 @@ test('parentOf reads the first line of the original body, even after a summary',
   assert.equal(parentOf('see\nParent: #12'), null);
   assert.equal(runBody(3, ' notes '), 'Parent: #3\n\nnotes');
   assert.equal(runBody(3, ''), 'Parent: #3');
+});
+
+test('dependsFromBody reads 依赖 lines of the original body', () => {
+  assert.deepEqual(dependsFromBody('## 背景\n依赖：#13 #14、#13\n依赖: #15\n提到 #16'), [13, 14, 15]);
+  assert.deepEqual(dependsFromBody(withSummary('依赖：#2', 'done')), [2]);
+  assert.deepEqual(dependsFromBody('完整通过依赖 #13'), []);
+  assert.equal(dependLine([13, 14]), '依赖：#13 #14');
+});
+
+test('epicOf reads 总事项 lines and prose', () => {
+  assert.equal(epicOf('总事项：#11'), 11);
+  assert.equal(epicOf('关联总事项 #11。来自验证'), 11);
+  assert.equal(epicOf('无'), null);
+  assert.equal(epicLine(11), '总事项：#11');
 });

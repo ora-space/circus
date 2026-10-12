@@ -34,6 +34,8 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 /unlabel repo:specs
 /assign @alice @bob
 /unassign @bob
+/depend #13 #14
+/undepend #14
 ```
 
 `/label` 只接受登记表里的 label；`/unlabel` 可以移除任何 label（包括登记表之前留下的旧 label）。由 bot 管理的 label（`run`）两个命令都不能动。bot 全部执行成功时给评论点 👍，有任何一条被拒绝时回复原因，其余照常执行。
@@ -42,7 +44,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 | 命令 | 作者 | 有写权限的人（owner） | assignee | 其他人 |
 |---|---|---|---|---|
-| `/label` `/unlabel` | ✓ | ✓ | ✗ | ✗ |
+| `/label` `/unlabel` `/depend` `/undepend` | ✓ | ✓ | ✗ | ✗ |
 | `/assign` | ✓ | ✓ | ✓ | ✗ |
 | `/unassign` 自己 | ✓ | ✓ | ✓ | ✓ |
 | `/unassign` 别人 | ✓ | ✓ | ✗ | ✗ |
@@ -62,6 +64,19 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 5. 退出 #N 时 `/unassign` 自己。
 
 同一个 issue 可以同时有多个运行 issue，分别属于不同 agent，或者同一个 agent 的多次尝试。parent 必须是未关闭的普通 issue，不能是另一个运行 issue；不合法时 bot 在运行 issue 里提示，不打 label、不挂子 issue。parent 的 label 仍由 parent 的作者或 owner 决定，运行 issue 的作者只在自己的运行 issue 里汇报。
+
+## 依赖和总事项
+
+两种关系，用法不同：
+
+| 关系 | 含义 | 怎么写 | 存在哪 |
+|---|---|---|---|
+| 依赖 | 本 issue 要等 #13 完成才能做完 | 打开时正文写一行 `依赖：#13 #14`；之后用 `/depend #13`、`/undepend #13` | GitHub 原生的 issue 依赖（Relationships 里的 blocked by） |
+| 总事项 | 本 issue 是 #11 的一部分 | 正文写一行 `总事项：#11`（也认"关联总事项 #11"这样的写法），随时可以编辑正文修改 | 只在正文里，`brief` 读它画树 |
+
+- **依赖**：网页上手动改依赖不会被撤销，以 GitHub 上的为准。被阻塞不打 label：有未关闭的依赖就是被阻塞，`brief` 在行尾标"等待 #13 #14"，看板显示 Blocked。依赖关闭（带总结）时，bot 在每个依赖它、还没关闭的 issue 下评论，说明剩下还在等谁，或者"依赖都已完成，可以开始"。在被阻塞的 issue 上开运行 issue 不会被拦，bot 会在运行 issue 里提醒还有哪些依赖没完成。
+- **总事项**：`brief` 把子事项挂在总事项下面，运行 issue 挂在它的 parent 下面，画成树；只在同一组里挂，所属的 issue 在别的组时，在行尾标出"总事项 #11"或"运行 → #11"。总事项不用 sub-issue 表达，sub-issue 只用来挂运行 issue。
+- **拆分**和这两者不同：一件事分给多人做，用 `/assign` 和运行 issue（第 4 条）。
 
 ## 5. 关闭前先总结
 
@@ -144,12 +159,13 @@ circus/
 | 命令 | 作用 |
 |---|---|
 | `sync` | 会话开始时运行：本地 `main` 和 fork 的 `main` 对齐 `ora-space/circus` |
-| `brief [--mine]` | 未关闭的 issue，分三组：我创建的、等 owner 的；其余我负责的；其他。组内按优先级排序 |
-| `new --title T [--label L]... [--body-file F]` | 新建 issue；`--label` 写进正文，由 bot 打上 |
+| `brief [--mine]` | 未关闭的 issue，分三组：我创建的、等 owner 的；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
+| `new --title T [--label L]... [--depend N]... [--epic N] [--body-file F]` | 新建 issue；`--label`、`--depend` 写进正文，由 bot 打上、设为依赖；`--epic` 写"总事项：#N" |
 | `run N [--title T] [--body-file F]` | 为 #N 开运行 issue |
 | `show N` | 完整输出 issue 和全部评论 |
 | `label N [+]L... -L...` | 评论 `/label`、`/unlabel` |
 | `assign N [+]@U... -@U...` | 评论 `/assign`、`/unassign` |
+| `depend N [+]#M... -#M...` | 评论 `/depend`、`/undepend` |
 | `close N --title T --summary-file F [--not-planned]` | 改标题、写总结、关闭 |
 | `worktree <repo> <type>/[<issue>-]<slug>` | 产品仓库：按需 fork 并 clone，基于最新 upstream main 建分支和 worktree |
 | `memory` | 记忆索引 |
@@ -164,6 +180,7 @@ circus/
 |---|---|
 | Done | issue 已关闭 |
 | Needs Owner / In Review | `status:needs-owner` / `status:in-review` |
+| Blocked | 有未关闭的依赖 |
 | Running | 有未关闭的运行 issue |
 | Open | 其余 |
 
@@ -175,12 +192,12 @@ Priority 字段来自 `priority:*`。`brief` 只列自己创建的、等 owner �
 
 | 事件 | 处理 |
 |---|---|
-| issue 打开 | 打上正文里写的 label，同步看板；运行 issue 另打 `run`、挂为 parent 的子 issue、作者不在 parent 的 assignee 里时补上 |
+| issue 打开 | 打上正文里写的 label、设上 `依赖：` 行里的依赖，同步看板；运行 issue 另打 `run`、挂为 parent 的子 issue、作者不在 parent 的 assignee 里时补上，parent 还有未完成的依赖时提醒 |
 | 手动打上 label | 撤销并留言；打开后一分钟内、且正文里写了的 label 除外（`gh issue create --label` 产生的事件），运行 issue 上的 `run` 除外 |
 | 手动移除 label | 恢复并留言 |
 | 手动 assign / unassign | 撤销并留言 |
-| issue 关闭 | 正文不以 `## 总结` 开头就重新打开并留言；有总结时移除 `status:*`、同步看板为 Done；运行 issue 把总结评论到 parent，并重新同步 parent |
-| issue 重新打开 | 同步看板（运行 issue 同步它的 parent） |
+| issue 关闭 | 正文不以 `## 总结` 开头就重新打开并留言；有总结时移除 `status:*`、同步看板为 Done，通知依赖它的 issue 并重新同步它们；运行 issue 把总结评论到 parent，并重新同步 parent |
+| issue 重新打开 | 同步看板，连同依赖它的 issue（运行 issue 同步它的 parent） |
 | 每天定时 / 在 Actions 页面手动触发 | 全量同步所有未关闭的 issue 到看板 |
 | 新评论 | 执行其中的斜杠命令（见权限表），同步看板；发出者不是作者时查一次仓库权限 |
 

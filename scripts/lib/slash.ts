@@ -1,18 +1,20 @@
-// Slash commands in issue comments: the only way to change labels and assignees after an
-// issue is opened. The CLI writes them, the bot parses and applies them.
+// Slash commands in issue comments: the only way to change labels, assignees and
+// dependencies after an issue is opened. The CLI writes them, the bot parses and applies them.
 //
 //   /label repo:desktop repo:specs     /unlabel repo:specs
 //   /assign @alice @bob                 /unassign @bob
+//   /depend #13 #14                     /undepend #14
 
-export const VERBS = ['label', 'unlabel', 'assign', 'unassign'] as const;
+export const VERBS = ['label', 'unlabel', 'assign', 'unassign', 'depend', 'undepend'] as const;
 export type Verb = (typeof VERBS)[number];
 
 export interface SlashCommand {
   verb: Verb;
-  args: string[]; // label names, or logins without "@"
+  args: string[]; // label names, logins without "@", or issue numbers without "#"
 }
 
-const isUserVerb = (verb: Verb) => verb === 'assign' || verb === 'unassign';
+const SIGIL: Partial<Record<Verb, string>> = { assign: '@', unassign: '@', depend: '#', undepend: '#' };
+const bare = (verb: Verb, arg: string) => (SIGIL[verb] && arg.startsWith(SIGIL[verb]) ? arg.slice(1) : arg);
 
 // One command per line, outside fenced code blocks. Lines starting with an unknown
 // "/word" (paths, URLs) are not commands.
@@ -33,7 +35,7 @@ export function parseSlash(body: string | null | undefined): SlashCommand[] {
     const args = (m[2] ?? '')
       .split(/[\s,]+/)
       .filter(Boolean)
-      .map((a) => (isUserVerb(verb) ? a.replace(/^@/, '') : a));
+      .map((a) => bare(verb, a));
     commands.push({ verb, args });
   }
   return commands;
@@ -42,7 +44,7 @@ export function parseSlash(body: string | null | undefined): SlashCommand[] {
 export function formatSlash(commands: SlashCommand[]): string {
   return commands
     .filter((c) => c.args.length)
-    .map((c) => `/${c.verb} ${c.args.map((a) => (isUserVerb(c.verb) ? `@${a.replace(/^@/, '')}` : a)).join(' ')}`)
+    .map((c) => `/${c.verb} ${c.args.map((a) => `${SIGIL[c.verb] ?? ''}${bare(c.verb, a)}`).join(' ')}`)
     .join('\n');
 }
 

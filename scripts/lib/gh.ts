@@ -29,6 +29,12 @@ export function api<T = unknown>(run: Gh, method: string, path: string, body?: u
   return (out.trim() ? JSON.parse(out) : undefined) as T;
 }
 
+export function graphql<T>(run: Gh, query: string, variables: Record<string, unknown>): T {
+  const res = api<{ data: T; errors?: { message: string }[] }>(run, 'POST', 'graphql', { query, variables });
+  if (res.errors?.length) throw new Error(res.errors.map((e) => e.message).join('; '));
+  return res.data;
+}
+
 // Every element of a paginated list endpoint. gh 2.46 has no --slurp, so pages are
 // flattened to one JSON document per line.
 export function apiList<T>(run: Gh, path: string): T[] {

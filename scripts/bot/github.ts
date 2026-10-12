@@ -14,6 +14,8 @@ export interface Issue {
   assignees: { login: string }[];
   labels: { name: string }[];
   pull_request?: unknown;
+  // blocked_by counts open dependencies.
+  issue_dependencies_summary?: { blocked_by: number };
 }
 
 export interface GitHub {
@@ -28,6 +30,11 @@ export interface GitHub {
   reopen(n: number): void;
   addSubIssue(parent: number, childId: number): void;
   subIssues(parent: number): Issue[];
+  // GitHub issue dependencies: the issues n is blocked by, and the issues n blocks.
+  blockedBy(n: number): Issue[];
+  blocking(n: number): Issue[];
+  addBlockedBy(n: number, blockerId: number): void;
+  removeBlockedBy(n: number, blockerId: number): void;
   // Open issues and pull requests (pull_request set) of the repository.
   listOpenIssues(): Issue[];
   // Repository permission of a user: admin, write, read or none.
@@ -47,6 +54,10 @@ export function ghGitHub(gh: Gh, repo: string): GitHub {
     reopen: (n) => void api(gh, 'PATCH', `${base}/${n}`, { state: 'open' }),
     addSubIssue: (parent, childId) => void api(gh, 'POST', `${base}/${parent}/sub_issues`, { sub_issue_id: childId }),
     subIssues: (parent) => apiList<Issue>(gh, `${base}/${parent}/sub_issues?per_page=100`),
+    blockedBy: (n) => apiList<Issue>(gh, `${base}/${n}/dependencies/blocked_by?per_page=100`),
+    blocking: (n) => apiList<Issue>(gh, `${base}/${n}/dependencies/blocking?per_page=100`),
+    addBlockedBy: (n, id) => void api(gh, 'POST', `${base}/${n}/dependencies/blocked_by`, { issue_id: id }),
+    removeBlockedBy: (n, id) => void api(gh, 'DELETE', `${base}/${n}/dependencies/blocked_by/${id}`),
     listOpenIssues: () => apiList<Issue>(gh, `${base}?state=open&per_page=100`),
     permission: (login) => api<{ permission: string }>(gh, 'GET', `repos/${repo}/collaborators/${login}/permission`).permission,
   };

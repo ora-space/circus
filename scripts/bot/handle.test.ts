@@ -24,6 +24,13 @@ const newIssue = (fields: Partial<Issue>): Issue => ({
 // in the store. Writes to #1 are logged bare, writes to other issues are prefixed "#n ".
 function fakeGitHub(issue: Partial<Issue> = {}, assignable = ['alice', 'bob', 'carol', 'owner'], writers = ['owner']) {
   const store = new Map<number, Issue>();
+  // Dependencies: issue number -> numbers of its blockers.
+  const blockers = new Map<number, number[]>();
+  const byId = (id: number) => [...store.values()].find((i) => i.id === id)!;
+  const summarize = (n: number) => {
+    const open = (blockers.get(n) ?? []).filter((b) => store.get(b)?.state === 'open').length;
+    if (store.has(n)) store.get(n)!.issue_dependencies_summary = { blocked_by: open };
+  };
   const state = newIssue(issue);
   store.set(state.number, state);
   const log: string[] = [];
@@ -61,6 +68,20 @@ function fakeGitHub(issue: Partial<Issue> = {}, assignable = ['alice', 'bob', 'c
     },
     addSubIssue: (parent, childId) => void push(parent, `sub-issue ${childId}`),
     subIssues: (parent) => [...store.values()].filter((i) => parentOf(i.body) === parent).map((i) => structuredClone(i)),
+    blockedBy: (n) => (blockers.get(n) ?? []).map((b) => structuredClone(at(b))),
+    blocking: (n) => [...blockers].filter(([, bs]) => bs.includes(n)).map(([d]) => structuredClone(at(d))),
+    addBlockedBy: (n, id) => {
+      const b = byId(id).number;
+      push(n, `depend ${b}`);
+      if ((blockers.get(n) ?? []).includes(b)) throw new Error('HTTP 422: Dependency already exists');
+      blockers.set(n, [...(blockers.get(n) ?? []), b]);
+      summarize(n);
+    },
+    removeBlockedBy: (n, id) => {
+      push(n, `undepend ${byId(id).number}`);
+      blockers.set(n, (blockers.get(n) ?? []).filter((b) => b !== byId(id).number));
+      summarize(n);
+    },
     listOpenIssues: () => [...store.values()].filter((i) => i.state === 'open').map((i) => structuredClone(i)),
   };
   const add = (fields: Partial<Issue>) => {
@@ -314,4 +335,66 @@ test('scheduled and manual runs resync every open non-run issue', () => {
     assert.deepEqual(b.synced, ['I_1 Running P2']);
   }
   assert.deepEqual(f.log, []);
+});
+
+// Dependencies: #1 is the issue under test, #2 and #3 are blockers.
+test('opened: 依赖 lines become dependencies; bad references are reported', () => {
+  const f = fakeGitHub({ body: '依赖：#2 #3 #1 #99' });
+  f.add({ number: 2 });
+  f.add({ number: 3 });
+  handle({ name: 'issues', payload: { action: 'opened', issue: f.state, sender: user('alice') } }, f.gh);
+  assert.deepEqual(f.log.slice(0, 2), ['depend 2', 'depend 3']);
+  assert.match(f.log[2], /^comment 正文里的依赖有问题：\n- 不能依赖自己\n- #99 不存在/);
+});
+
+test('/depend and /undepend follow the label permissions', () => {
+  const f = fakeGitHub();
+  f.add({ number: 2 });
+  commentEvent(f, 'alice', '/depend #2');
+  commentEvent(f, 'alice', '/depend #2');
+  assert.deepEqual(f.log.slice(0, 2), ['depend 2', 'react 42 +1']);
+  assert.match(f.log[3], /无法依赖 #2：HTTP 422: Dependency already exists/);
+  f.log.length = 0;
+  commentEvent(f, 'bob', '/undepend #2');
+  assert.match(f.log[1], /只有作者 @alice 和有写权限的人可以修改依赖/);
+  f.log.length = 0;
+  commentEvent(f, 'owner', '/undepend #2');
+  assert.deepEqual(f.log, ['permission owner', 'undepend 2', 'react 42 +1']);
+});
+
+test('closing a blocker tells each open dependent what is left and resyncs it', () => {
+  const f = fakeGitHub({ number: 1 });
+  f.add({ number: 2, title: '部署统一' });
+  f.add({ number: 3 });
+  f.gh.addBlockedBy(1, 1002);
+  f.gh.addBlockedBy(1, 1003);
+  f.log.length = 0;
+  const b = fakeBoard();
+  const blocker = f.add({ number: 2, title: '部署统一', state: 'closed', body: '## 总结\n\n完成' });
+  handle({ name: 'issues', payload: { action: 'closed', issue: blocker, sender: user('alice') } }, f.gh, b.board);
+  assert.deepEqual(f.log, ['comment 依赖 #2 已关闭：**部署统一**，总结见 #2。还在等 #3。']);
+  assert.deepEqual(b.synced, ['I_2 Done', 'I_1 Blocked']);
+
+  f.log.length = 0;
+  const last = f.add({ number: 3, title: '收尾', state: 'closed', body: '## 总结\n\n完成' });
+  handle({ name: 'issues', payload: { action: 'closed', issue: last, sender: user('alice') } }, f.gh, fakeBoard().board);
+  assert.equal(f.log[0], 'comment 依赖 #3 已关闭：**收尾**，总结见 #3。依赖都已完成，可以开始。');
+});
+
+test('reopening a blocker resyncs its dependents', () => {
+  const f = fakeGitHub();
+  f.add({ number: 2 });
+  f.gh.addBlockedBy(1, 1002);
+  const b = fakeBoard();
+  handle({ name: 'issues', payload: { action: 'reopened', issue: f.gh.getIssue(2), sender: user('alice') } }, f.gh, b.board);
+  assert.deepEqual(b.synced, ['I_2 Open', 'I_1 Blocked']);
+});
+
+test('a run on a blocked issue gets a reminder', () => {
+  const f = fakeGitHub({ assignees: [{ login: 'bob' }] });
+  f.add({ number: 3 });
+  f.gh.addBlockedBy(1, 1003);
+  f.log.length = 0;
+  opened(f, f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1' }));
+  assert.equal(f.log.at(-1), '#2 comment 提醒：#1 还有未完成的依赖 #3。可以先做不受影响的部分。');
 });

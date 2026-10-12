@@ -1,14 +1,16 @@
-// The bot is the only writer of labels and assignees. It
-//   - sets labels written in the body when an issue opens,
+// The bot is the only writer of labels and assignees, and the path agents use for
+// dependencies (hand edits to dependencies are allowed). It
+//   - sets labels and dependencies written in the body when an issue opens,
 //   - applies slash commands from comments, checking who may run them,
 //   - reverts label and assignee changes made by hand,
-//   - reopens issues closed without a summary,
+//   - reopens issues closed without a summary, and tells dependents when a blocker closes,
 //   - links runs to their parent and reports their summary back (see lib/run.ts),
 //   - drops status labels on close and mirrors issues onto the board (see lib/board.ts);
 //     nobody else writes to the board.
 // Events caused by bots (including itself) are ignored, so its own writes do not loop.
 import type { GitHub, Issue } from './github.ts';
 import { boardValues, type Board } from '../lib/board.ts';
+import { dependsFromBody } from '../lib/deps.ts';
 import { applyLabels, isBotLabel, isKnown, labelsFromBody } from '../lib/labels.ts';
 import { parentOf, RUN_LABEL } from '../lib/run.ts';
 import { parseSlash, type SlashCommand } from '../lib/slash.ts';
@@ -38,6 +40,9 @@ export function authorize(cmd: SlashCommand, actor: string, issue: Issue, isWrit
     case 'label':
     case 'unlabel':
       return `只有${who}可以修改 label`;
+    case 'depend':
+    case 'undepend':
+      return `只有${who}可以修改依赖`;
     case 'assign':
       return logins(issue).includes(actor) ? null : `只有${who}以及现有 assignee 可以拉人`;
     case 'unassign': {
@@ -79,6 +84,14 @@ function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashC
       const after = gh.addAssignees(issue.number, cmd.args);
       const skipped = cmd.args.filter((u) => !after.includes(u));
       if (skipped.length) errors.push(`${line}：GitHub 拒绝 assign ${skipped.map((u) => `@${u}`).join(' ')}（不是协作者？）`);
+    } else if (cmd.verb === 'depend') {
+      errors.push(...addDependencies(gh, issue.number, cmd.args).map((e) => `${line}：${e}`));
+    } else if (cmd.verb === 'undepend') {
+      for (const arg of cmd.args) {
+        const blocker = resolve(gh, issue.number, arg);
+        if (typeof blocker === 'string') errors.push(`${line}：${blocker}`);
+        else gh.removeBlockedBy(issue.number, blocker.id);
+      }
     } else {
       gh.removeAssignees(issue.number, cmd.args);
     }
@@ -92,6 +105,38 @@ function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashC
 }
 
 // Bot-set labels an issue should carry, judged from its body.
+// The issue an argument names, or why it cannot be a dependency of n.
+function resolve(gh: GitHub, n: number, arg: string): Issue | string {
+  if (!/^\d+$/.test(arg)) return `${arg} 不是 issue 编号`;
+  if (Number(arg) === n) return '不能依赖自己';
+  try {
+    const issue = gh.getIssue(Number(arg));
+    return issue.pull_request ? `#${arg} 是 PR，不是 issue` : issue;
+  } catch {
+    return `#${arg} 不存在`;
+  }
+}
+
+// Marks n as blocked by each issue; returns the problems.
+function addDependencies(gh: GitHub, n: number, args: (string | number)[]): string[] {
+  const errors: string[] = [];
+  for (const arg of args) {
+    const blocker = resolve(gh, n, String(arg));
+    if (typeof blocker === 'string') {
+      errors.push(blocker);
+      continue;
+    }
+    try {
+      gh.addBlockedBy(n, blocker.id);
+    } catch (e) {
+      errors.push(`无法依赖 #${blocker.number}：${(e as Error).message.split('\n')[0]}`);
+    }
+  }
+  return errors;
+}
+
+const openRefs = (issues: Issue[]) => issues.filter((i) => i.state === 'open').map((i) => `#${i.number}`);
+
 const expectedBotLabels = (issue: Issue) => (parentOf(issue.body) !== null ? [RUN_LABEL] : []);
 
 function openRun(gh: GitHub, run: Issue, parent: number): number | null {
@@ -114,16 +159,29 @@ function openRun(gh: GitHub, run: Issue, parent: number): number | null {
   if (!logins(item).includes(author) && !gh.addAssignees(parent, [author]).includes(author)) {
     gh.comment(run.number, `无法把 @${author} assign 到 #${parent}（不是协作者？）。`);
   }
+  const waiting = openRefs(gh.blockedBy(parent));
+  if (waiting.length) gh.comment(run.number, `提醒：#${parent} 还有未完成的依赖 ${waiting.join(' ')}。可以先做不受影响的部分。`);
   return parent;
 }
 
 const REVERT_HINT = 'label 和 assignee 只能由 bot 修改：在评论里写 `/label`、`/unlabel`、`/assign`、`/unassign`。';
 
+// When a blocker closes, each open dependent hears what is left; returns the dependents.
+function notifyDependents(gh: GitHub, blocker: Issue): number[] {
+  const dependents = gh.blocking(blocker.number).filter((i) => i.state === 'open');
+  for (const d of dependents) {
+    const left = openRefs(gh.blockedBy(d.number)).filter((r) => r !== `#${blocker.number}`);
+    const next = left.length ? `还在等 ${left.join(' ')}` : '依赖都已完成，可以开始';
+    gh.comment(d.number, `依赖 #${blocker.number} 已关闭：**${blocker.title}**，总结见 #${blocker.number}。${next}。`);
+  }
+  return dependents.map((d) => d.number);
+}
+
 // Mirrors a non-run issue onto the board.
 function syncBoard(gh: GitHub, board: Board, item: Issue): void {
   if (item.pull_request || parentOf(item.body) !== null) return;
   const openRuns = gh.subIssues(item.number).filter((i) => i.state === 'open' && parentOf(i.body) !== null).length;
-  board.sync(item.node_id, boardValues(item, openRuns));
+  board.sync(item.node_id, boardValues(item, openRuns, item.issue_dependencies_summary?.blocked_by ?? 0));
 }
 
 // Scheduled and manual workflow runs resync every open issue, which also undoes edits
@@ -153,6 +211,8 @@ function dispatch(event: Event, gh: GitHub): number[] {
         const synced = openRun(gh, issue, parent);
         return synced === null ? [] : [synced];
       }
+      const failed = addDependencies(gh, n, dependsFromBody(issue.body));
+      if (failed.length) gh.comment(n, [`正文里的依赖有问题：`, ...failed.map((e) => `- ${e}`), '', '用 `/depend #N` 补上。'].join('\n'));
       const wanted = labelsFromBody(issue.body);
       if (wanted.length) {
         const current = names(gh.getIssue(n));
@@ -199,7 +259,7 @@ function dispatch(event: Event, gh: GitHub): number[] {
         const open = current.filter((l) => !l.startsWith('status:'));
         if (open.length !== current.length) gh.setLabels(n, open);
         const parent = parentOf(issue.body);
-        if (parent === null) return [n];
+        if (parent === null) return [n, ...notifyDependents(gh, issue)];
         const { summary } = splitSummary(issue.body);
         gh.comment(parent, `运行 #${n}（@${issue.user.login}）已结束：**${issue.title}**\n\n${summary}`);
         return [parent];
@@ -214,7 +274,8 @@ function dispatch(event: Event, gh: GitHub): number[] {
     }
     case 'issues.reopened': {
       const parent = parentOf(issue.body);
-      return [parent ?? n];
+      if (parent !== null) return [parent];
+      return [n, ...gh.blocking(n).filter((i) => i.state === 'open').map((i) => i.number)];
     }
     case 'issue_comment.created': {
       const commands = parseSlash(event.payload.comment.body);
