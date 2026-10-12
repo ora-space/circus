@@ -28,7 +28,7 @@ scope: ora-space      # 适用范围：all、ora-space，或具体仓库名如 d
 正文
 ```
 
-`bin/circus memory` 从 `summary` 和 `scope` 生成索引，所以不维护 INDEX 文件。时间、作者和来由看 git 历史和 PR。
+`node scripts/cli.ts memory` 从 `summary` 和 `scope` 生成索引，所以不维护 INDEX 文件。时间、作者和来由看 git 历史和 PR。
 
 ## 修改
 
