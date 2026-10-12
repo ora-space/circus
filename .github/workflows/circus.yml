@@ -1,11 +1,15 @@
-# The circus bot: the only writer of labels and assignees. See scripts/README.md.
+# The circus bot: the only writer of labels, assignees and the board. See scripts/README.md.
 name: circus
 
 on:
   issues:
-    types: [opened, closed, labeled, unlabeled, assigned, unassigned]
+    types: [opened, closed, reopened, labeled, unlabeled, assigned, unassigned]
   issue_comment:
     types: [created]
+  # Full resync of the board: corrects hand edits and anything a missed event left behind.
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read

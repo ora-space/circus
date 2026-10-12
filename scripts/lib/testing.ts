@@ -19,6 +19,7 @@ export function fakeContext(respond: (args: string[], input?: string) => string 
       throw new Error('unexpected git');
     },
     repo: 'ora-space/circus',
+    project: 4,
     root: '/nonexistent',
     out: (line) => lines.push(line),
     env: {},

@@ -6,6 +6,7 @@ export interface Context {
   gh: Gh;
   git: Git; // runs in root
   repo: string; // owner/name of the circus repository
+  project: number; // board: Project number in the repository owner's org
   root: string; // checkout root
   out: (line: string) => void;
   env: Record<string, string | undefined>;

@@ -2,9 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { authorize, handle } from './handle.ts';
 import type { GitHub, Issue } from './github.ts';
+import type { Board, BoardValues } from '../lib/board.ts';
+import { parentOf } from '../lib/run.ts';
 
 const newIssue = (fields: Partial<Issue>): Issue => ({
   id: 1000 + (fields.number ?? 1),
+  node_id: `I_${fields.number ?? 1}`,
   number: 1,
   title: 'T',
   state: 'open',
@@ -57,6 +60,8 @@ function fakeGitHub(issue: Partial<Issue> = {}, assignable = ['alice', 'bob', 'c
       return writers.includes(login) ? 'admin' : 'read';
     },
     addSubIssue: (parent, childId) => void push(parent, `sub-issue ${childId}`),
+    subIssues: (parent) => [...store.values()].filter((i) => parentOf(i.body) === parent).map((i) => structuredClone(i)),
+    listOpenIssues: () => [...store.values()].filter((i) => i.state === 'open').map((i) => structuredClone(i)),
   };
   const add = (fields: Partial<Issue>) => {
     const i = newIssue(fields);
@@ -248,4 +253,65 @@ test('the run label is kept on runs, reverted elsewhere, and refused by commands
   assert.match(f.log[1], /`\/label run repo:desktop`：run 由 bot 管理/);
   assert.match(f.log[1], /`\/unlabel run`：run 由 bot 管理/);
   assert.doesNotMatch(f.log[1], /未登记/);
+});
+
+// Board: records what each issue was synced to.
+function fakeBoard() {
+  const synced: string[] = [];
+  const board: Board = {
+    sync: (id: string, v: BoardValues) => void synced.push(`${id} ${v.Status}${v.Priority ? ' ' + v.Priority : ''}`),
+  };
+  return { board, synced };
+}
+
+test('board: an opened issue is mirrored with its status and priority', () => {
+  const f = fakeGitHub({ body: 'status:needs-owner priority:p1' });
+  const b = fakeBoard();
+  handle({ name: 'issues', payload: { action: 'opened', issue: f.state, sender: user('alice') } }, f.gh, b.board);
+  assert.deepEqual(b.synced, ['I_1 Needs Owner P1']);
+});
+
+test('board: runs are not mirrored, their parent turns Running and back', () => {
+  const f = fakeGitHub();
+  const b = fakeBoard();
+  const run = f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1' });
+  handle({ name: 'issues', payload: { action: 'opened', issue: run, sender: user('bob') } }, f.gh, b.board);
+  run.state = 'closed';
+  run.body = '## 总结\n\nok\n\n---\n\nParent: #1';
+  handle({ name: 'issues', payload: { action: 'closed', issue: run, sender: user('bob') } }, f.gh, b.board);
+  commentEvent(f, 'alice', 'no commands');
+  assert.deepEqual(b.synced, ['I_1 Running', 'I_1 Open']);
+});
+
+test('closing with a summary drops status labels and shows Done', () => {
+  const f = fakeGitHub({ state: 'closed', body: '## 总结\n\nok', labels: [{ name: 'status:needs-owner' }, { name: 'type:decision' }] });
+  const b = fakeBoard();
+  handle({ name: 'issues', payload: { action: 'closed', issue: f.state, sender: user('alice') } }, f.gh, b.board);
+  assert.deepEqual(f.log, ['labels type:decision']);
+  assert.deepEqual(b.synced, ['I_1 Done']);
+});
+
+test('board: slash commands resync the issue, reverts do not', () => {
+  const f = fakeGitHub();
+  const b = fakeBoard();
+  handle(
+    { name: 'issue_comment', payload: { action: 'created', issue: f.state, sender: user('alice'), comment: { id: 1, body: '/label priority:p0' } } },
+    f.gh,
+    b.board,
+  );
+  handle({ name: 'issues', payload: { action: 'unlabeled', issue: f.state, sender: user('alice'), label: { name: 'priority:p0' } } }, f.gh, b.board);
+  assert.deepEqual(b.synced, ['I_1 Open P0']);
+});
+
+test('scheduled and manual runs resync every open non-run issue', () => {
+  const f = fakeGitHub({ labels: [{ name: 'priority:p2' }] });
+  f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1' });
+  f.add({ number: 3, state: 'closed' });
+  f.add({ number: 4, pull_request: {} });
+  for (const name of ['schedule', 'workflow_dispatch']) {
+    const b = fakeBoard();
+    handle({ name, payload: {} }, f.gh, b.board);
+    assert.deepEqual(b.synced, ['I_1 Running P2']);
+  }
+  assert.deepEqual(f.log, []);
 });

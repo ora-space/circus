@@ -3,25 +3,41 @@ import assert from 'node:assert/strict';
 import { command, type ListedIssue } from './index.ts';
 import { fakeContext } from '../lib/testing.ts';
 
+const issue = (number: number, title: string, author: string, labels: string[] = [], extra: Partial<ListedIssue> = {}): ListedIssue => ({
+  number,
+  title,
+  author: { login: author },
+  assignees: [],
+  labels: labels.map((name) => ({ name })),
+  body: '',
+  ...extra,
+});
+
 const issues: ListedIssue[] = [
-  { number: 1, title: 'theirs', author: { login: 'bob' }, assignees: [], labels: [], body: '' },
-  { number: 2, title: 'helping', author: { login: 'bob' }, assignees: [{ login: 'me' }], labels: [{ name: 'repo:desktop' }], body: '' },
-  { number: 3, title: 'mine', author: { login: 'me' }, assignees: [], labels: [{ name: 'run' }], body: 'Parent: #2' },
+  issue(1, 'theirs', 'bob', ['status:needs-owner']),
+  issue(2, 'helping', 'bob', ['repo:desktop'], { assignees: [{ login: 'me' }] }),
+  issue(3, 'mine', 'me', ['run'], { body: 'Parent: #2' }),
+  issue(4, 'blocked', 'me', ['status:needs-owner', 'priority:p1']),
+  issue(5, 'urgent', 'me', ['priority:p0']),
 ];
 const respond = (args: string[]) => (args[0] === 'api' ? 'me\n' : JSON.stringify(issues));
 
-test('brief puts my issues first', () => {
+test('brief: my issues waiting on the owner first, then mine by priority, then others', () => {
   const { ctx, lines } = fakeContext(respond);
   command.run([], ctx);
   assert.equal(
     lines.join('\n'),
     [
-      '## 我负责的（@me） (2)',
+      '## 等 owner（我创建的） (1)',
+      '- #4 blocked  @me [status:needs-owner priority:p1]',
+      '',
+      '## 我负责的（@me） (3)',
+      '- #5 urgent  @me [priority:p0]',
       '- #2 helping  @bob → @me [repo:desktop]',
       '- #3 mine（运行 → #2）  @me [run]',
       '',
       '## 其他 (1)',
-      '- #1 theirs  @bob',
+      '- #1 theirs  @bob [status:needs-owner]',
     ].join('\n'),
   );
 });

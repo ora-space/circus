@@ -1,8 +1,9 @@
 // The slice of the GitHub API the bot uses, behind a port so handler tests run in memory.
-import { api, type Gh } from '../lib/gh.ts';
+import { api, apiList, type Gh } from '../lib/gh.ts';
 
 export interface Issue {
   id: number;
+  node_id: string;
   number: number;
   title: string;
   state: string;
@@ -26,6 +27,9 @@ export interface GitHub {
   react(commentId: number, content: string): void;
   reopen(n: number): void;
   addSubIssue(parent: number, childId: number): void;
+  subIssues(parent: number): Issue[];
+  // Open issues and pull requests (pull_request set) of the repository.
+  listOpenIssues(): Issue[];
   // Repository permission of a user: admin, write, read or none.
   permission(login: string): string;
 }
@@ -42,6 +46,8 @@ export function ghGitHub(gh: Gh, repo: string): GitHub {
     react: (id, content) => void api(gh, 'POST', `${base}/comments/${id}/reactions`, { content }),
     reopen: (n) => void api(gh, 'PATCH', `${base}/${n}`, { state: 'open' }),
     addSubIssue: (parent, childId) => void api(gh, 'POST', `${base}/${parent}/sub_issues`, { sub_issue_id: childId }),
+    subIssues: (parent) => apiList<Issue>(gh, `${base}/${parent}/sub_issues?per_page=100`),
+    listOpenIssues: () => apiList<Issue>(gh, `${base}?state=open&per_page=100`),
     permission: (login) => api<{ permission: string }>(gh, 'GET', `repos/${repo}/collaborators/${login}/permission`).permission,
   };
 }

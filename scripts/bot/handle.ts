@@ -3,9 +3,12 @@
 //   - applies slash commands from comments, checking who may run them,
 //   - reverts label and assignee changes made by hand,
 //   - reopens issues closed without a summary,
-//   - links runs to their parent and reports their summary back (see lib/run.ts).
+//   - links runs to their parent and reports their summary back (see lib/run.ts),
+//   - drops status labels on close and mirrors issues onto the board (see lib/board.ts);
+//     nobody else writes to the board.
 // Events caused by bots (including itself) are ignored, so its own writes do not loop.
 import type { GitHub, Issue } from './github.ts';
+import { boardValues, type Board } from '../lib/board.ts';
 import { applyLabels, isBotLabel, isKnown, labelsFromBody } from '../lib/labels.ts';
 import { parentOf, RUN_LABEL } from '../lib/run.ts';
 import { parseSlash, type SlashCommand } from '../lib/slash.ts';
@@ -91,7 +94,7 @@ function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashC
 // Bot-set labels an issue should carry, judged from its body.
 const expectedBotLabels = (issue: Issue) => (parentOf(issue.body) !== null ? [RUN_LABEL] : []);
 
-function openRun(gh: GitHub, run: Issue, parent: number): void {
+function openRun(gh: GitHub, run: Issue, parent: number): number | null {
   let item: Issue | null = null;
   try {
     item = gh.getIssue(parent);
@@ -100,7 +103,7 @@ function openRun(gh: GitHub, run: Issue, parent: number): void {
   }
   if (!item || item.pull_request || item.state !== 'open' || parentOf(item.body) !== null) {
     gh.comment(run.number, `#${parent} 不是未关闭的普通 issue，不能作为 parent。请关闭本 issue，修正首行的 \`Parent: #N\` 后重新开。`);
-    return;
+    return null;
   }
   const current = names(gh.getIssue(run.number));
   const next = applyLabels(current, [...labelsFromBody(run.body), RUN_LABEL], []);
@@ -111,66 +114,95 @@ function openRun(gh: GitHub, run: Issue, parent: number): void {
   if (!logins(item).includes(author) && !gh.addAssignees(parent, [author]).includes(author)) {
     gh.comment(run.number, `无法把 @${author} assign 到 #${parent}（不是协作者？）。`);
   }
+  return parent;
 }
 
 const REVERT_HINT = 'label 和 assignee 只能由 bot 修改：在评论里写 `/label`、`/unlabel`、`/assign`、`/unassign`。';
 
-export function handle(event: Event, gh: GitHub): void {
+// Mirrors a non-run issue onto the board.
+function syncBoard(gh: GitHub, board: Board, item: Issue): void {
+  if (item.pull_request || parentOf(item.body) !== null) return;
+  const openRuns = gh.subIssues(item.number).filter((i) => i.state === 'open' && parentOf(i.body) !== null).length;
+  board.sync(item.node_id, boardValues(item, openRuns));
+}
+
+// Scheduled and manual workflow runs resync every open issue, which also undoes edits
+// made on the board by hand and refills values cleared by a Status options change.
+const RESYNC_EVENTS = ['schedule', 'workflow_dispatch'];
+
+export function handle(event: Event, gh: GitHub, board?: Board): void {
+  if (RESYNC_EVENTS.includes(event.name)) {
+    if (board) for (const item of gh.listOpenIssues()) syncBoard(gh, board, item);
+    return;
+  }
+  const touched = dispatch(event, gh);
+  if (board) for (const n of new Set(touched)) syncBoard(gh, board, gh.getIssue(n));
+}
+
+// Applies the event and returns the issues whose board entry may have changed.
+function dispatch(event: Event, gh: GitHub): number[] {
   const { action, issue, sender } = event.payload;
-  if (!issue || issue.pull_request || sender?.type === 'Bot') return;
+  if (!issue || issue.pull_request || sender?.type === 'Bot') return [];
   const n: number = issue.number;
   const who = `@${sender.login}`;
 
   switch (`${event.name}.${action}`) {
     case 'issues.opened': {
       const parent = parentOf(issue.body);
-      if (parent !== null) return openRun(gh, issue, parent);
+      if (parent !== null) {
+        const synced = openRun(gh, issue, parent);
+        return synced === null ? [] : [synced];
+      }
       const wanted = labelsFromBody(issue.body);
-      if (!wanted.length) return;
-      const current = names(gh.getIssue(n));
-      const next = applyLabels(current, wanted, []);
-      if (next.join('\n') !== current.join('\n')) gh.setLabels(n, next);
-      return;
+      if (wanted.length) {
+        const current = names(gh.getIssue(n));
+        const next = applyLabels(current, wanted, []);
+        if (next.join('\n') !== current.join('\n')) gh.setLabels(n, next);
+      }
+      return [n];
     }
     case 'issues.labeled': {
       const label: string = event.payload.label.name;
       const opening = Date.parse(issue.updated_at) - Date.parse(issue.created_at) < OPENING_MS;
-      if (opening && labelsFromBody(issue.body).includes(label)) return;
-      if (expectedBotLabels(issue).includes(label)) return;
+      if (opening && labelsFromBody(issue.body).includes(label)) return [];
+      if (expectedBotLabels(issue).includes(label)) return [];
       const current = names(gh.getIssue(n));
-      if (!current.includes(label)) return;
+      if (!current.includes(label)) return [];
       gh.setLabels(n, current.filter((l) => l !== label));
       gh.comment(n, `${who} 已撤销手动打上的 \`${label}\`。${REVERT_HINT}`);
-      return;
+      return [];
     }
     case 'issues.unlabeled': {
       const label: string = event.payload.label.name;
       const current = names(gh.getIssue(n));
-      if (current.includes(label)) return;
+      if (current.includes(label)) return [];
       gh.setLabels(n, [...current, label]);
       gh.comment(n, `${who} 已恢复被手动移除的 \`${label}\`。${REVERT_HINT}`);
-      return;
+      return [];
     }
     case 'issues.assigned': {
       const user: string = event.payload.assignee.login;
       gh.removeAssignees(n, [user]);
       gh.comment(n, `${who} 已撤销手动 assign 的 @${user}。${REVERT_HINT}`);
-      return;
+      return [];
     }
     case 'issues.unassigned': {
       const user: string = event.payload.assignee.login;
       gh.addAssignees(n, [user]);
       gh.comment(n, `${who} 已恢复被手动移除的 assignee @${user}。${REVERT_HINT}`);
-      return;
+      return [];
     }
     case 'issues.closed': {
       if (hasSummary(issue.body)) {
+        // Done is the closed state itself, not a label.
+        const current = names(gh.getIssue(n));
+        const open = current.filter((l) => !l.startsWith('status:'));
+        if (open.length !== current.length) gh.setLabels(n, open);
         const parent = parentOf(issue.body);
-        if (parent !== null) {
-          const { summary } = splitSummary(issue.body);
-          gh.comment(parent, `运行 #${n}（@${issue.user.login}）已结束：**${issue.title}**\n\n${summary}`);
-        }
-        return;
+        if (parent === null) return [n];
+        const { summary } = splitSummary(issue.body);
+        gh.comment(parent, `运行 #${n}（@${issue.user.login}）已结束：**${issue.title}**\n\n${summary}`);
+        return [parent];
       }
       gh.reopen(n);
       gh.comment(
@@ -178,15 +210,20 @@ export function handle(event: Event, gh: GitHub): void {
         `${who} 关闭前需要先总结：把整个 issue 读一遍，改成能概括结果的标题，并在正文开头写 \`${SUMMARY_HEADING}\`。` +
           '用 `node scripts/cli.ts close N --title T --summary-file F` 一步完成。已重新打开。',
       );
-      return;
+      return [n];
+    }
+    case 'issues.reopened': {
+      const parent = parentOf(issue.body);
+      return [parent ?? n];
     }
     case 'issue_comment.created': {
       const commands = parseSlash(event.payload.comment.body);
-      if (!commands.length) return;
+      if (!commands.length) return [];
       const errors = applyCommands(gh, gh.getIssue(n), sender.login, commands);
       if (errors.length) gh.comment(n, [`${who} 以下命令有问题，其余已执行：`, ...errors.map((e) => `- ${e}`)].join('\n'));
       else gh.react(event.payload.comment.id, '+1');
-      return;
+      return [n];
     }
   }
+  return [];
 }

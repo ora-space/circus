@@ -2,7 +2,7 @@ import type { Command } from '../lib/context.ts';
 import { allLabels } from '../lib/labels.ts';
 
 const usage = `setup
-    按 label 登记表创建或校正仓库里的 label（幂等，需要写权限）。`;
+    owner 用（幂等）：按 label 登记表创建或校正仓库里的 label，需要写权限。看板由 bot 自己维护，不在这里。`;
 
 export const command: Command = {
   usage,

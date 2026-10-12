@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // circus CLI: node scripts/cli.ts <command> [args]. Each command lives in scripts/<command>/.
-import { circusRepo, ROOT } from './lib/config.ts';
+import { circusConfig, ROOT } from './lib/config.ts';
 import { readInput, UsageError, type Command, type Context } from './lib/context.ts';
 import { gh, git } from './lib/gh.ts';
 import { command as assign } from './assign/index.ts';
@@ -36,7 +36,7 @@ async function main(argv: string[]): Promise<number> {
   const ctx: Context = {
     gh,
     git: git(ROOT),
-    repo: circusRepo(),
+    ...circusConfig(),
     root: ROOT,
     out: (line) => console.log(line),
     env: process.env,

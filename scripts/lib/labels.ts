@@ -1,10 +1,12 @@
 // The label registry. A label is `<prefix>:<value>`; only registered labels can be set
-// through the bot. The set of families is still under discussion, `repo:` is a placeholder.
+// through the bot.
 
 export interface LabelFamily {
   prefix: string;
   values: readonly string[];
   description: string;
+  // Per-value description; falls back to `description`.
+  descriptions?: Readonly<Record<string, string>>;
   color: string;
   // At most one value of the family per issue; setting one replaces the other.
   exclusive: boolean;
@@ -13,6 +15,39 @@ export interface LabelFamily {
 }
 
 export const FAMILIES: readonly LabelFamily[] = [
+  {
+    prefix: 'type',
+    values: ['task', 'bug', 'decision', 'question', 'idea'],
+    description: '事项类型',
+    descriptions: {
+      task: '需要动手的工作',
+      bug: '缺陷',
+      decision: '等 owner 拍板的决策；关闭后是查"为什么这么定"的入口',
+      question: '待调研或待澄清的问题',
+      idea: '建议、想法，未决定做不做',
+    },
+    color: '1d76db',
+    exclusive: true,
+    fromBody: true,
+  },
+  {
+    prefix: 'status',
+    values: ['needs-owner', 'in-review'],
+    description: '等 owner',
+    descriptions: { 'needs-owner': '等 owner 回复、决策或授权', 'in-review': 'PR 待 owner 审' },
+    color: 'fbca04',
+    exclusive: true,
+    fromBody: true,
+  },
+  {
+    prefix: 'priority',
+    values: ['p0', 'p1', 'p2', 'p3'],
+    description: '优先级',
+    descriptions: { p0: '立即', p1: '高', p2: '中', p3: '低' },
+    color: 'd93f0b',
+    exclusive: true,
+    fromBody: true,
+  },
   {
     prefix: 'repo',
     values: ['desktop', 'specs', 'cluster', 'cloud', 'sandbox', 'marketplace'],
@@ -39,7 +74,7 @@ export const isKnown = (label: string, families = FAMILIES) => familyOf(label, f
 
 export function allLabels(families = FAMILIES): { name: string; description: string; color: string }[] {
   return [
-    ...families.flatMap((f) => f.values.map((v) => ({ name: `${f.prefix}:${v}`, description: f.description, color: f.color }))),
+    ...families.flatMap((f) => f.values.map((v) => ({ name: `${f.prefix}:${v}`, description: f.descriptions?.[v] ?? f.description, color: f.color }))),
     ...BOT_LABELS,
   ];
 }

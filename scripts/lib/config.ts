@@ -13,9 +13,11 @@ export function parseEnv(text: string): Record<string, string> {
   return env;
 }
 
-// owner/name of the circus repository, from circus.env.
-export function circusRepo(root = ROOT): string {
+// The circus repository (owner/name) and its board's Project number, from circus.env.
+export function circusConfig(root = ROOT): { repo: string; project: number } {
   const env = parseEnv(readFileSync(join(root, 'circus.env'), 'utf8'));
   if (!env.CIRCUS_REPO) throw new Error('circus.env 缺少 CIRCUS_REPO');
-  return env.CIRCUS_REPO;
+  const project = Number(env.CIRCUS_PROJECT);
+  if (!Number.isInteger(project) || project <= 0) throw new Error('circus.env 缺少 CIRCUS_PROJECT');
+  return { repo: env.CIRCUS_REPO, project };
 }

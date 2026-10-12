@@ -83,14 +83,21 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 ## Label 登记表
 
-登记表在 [`lib/labels.ts`](lib/labels.ts)，`node scripts/cli.ts setup` 按它创建仓库 label。具体有哪些 label 还在讨论，目前只有：
+登记表在 [`lib/labels.ts`](lib/labels.ts)，`node scripts/cli.ts setup` 按它创建仓库 label。
 
 | label | 含义 | 可由正文设置 | 互斥 |
 |---|---|---|---|
+| `type:task` `type:bug` `type:decision` `type:question` `type:idea` | 类型：需要动手的工作、缺陷、等 owner 拍板的决策、待调研或待澄清的问题、未决定做不做的建议 | ✓ | ✓ |
+| `status:needs-owner` | 等 owner 回复、决策或授权 | ✓ | ✓ |
+| `status:in-review` | PR 待 owner 审 | ✓ | ✓ |
+| `priority:p0`–`p3` | 优先级：立即、高、中、低；不设就是没有优先级 | ✓ | ✓ |
 | `repo:<name>` | 事项落在哪个 ora-space 仓库：desktop、specs、cluster、cloud、sandbox、marketplace；跨仓库可打多个 | ✓ | ✗ |
 | `run` | 运行 issue（正文首行 `Parent: #N`）。由 bot 管理：只在打开运行 issue 时由 bot 打上，命令不能增删 | ✗ | — |
 
 互斥的 label 族（每个 issue 至多一个值）在设置新值时自动替换旧值。
+
+- **`type:decision` 有长期价值。** 决策 issue 关闭后，标题和 `## 总结` 写明结论和理由，以后要查"当初为什么这么定"，用 `gh issue list -R ora-space/circus --state closed --label type:decision --search "<关键词>"` 就能找到。所以凡是要 owner 拍板的，都开成 `type:decision`：正文列选项、依据、代价，同时打 `status:needs-owner`。
+- **status 只表示"等 owner"。** 其余状态不用 label：在做 = 有未关闭的运行 issue，完成 = issue 已关闭。issue 关闭时 bot 移除它的 `status:*`。等 owner 的事，作者给自己的 issue 打 `status:needs-owner`；运行 issue 的作者改不了 parent，就打在自己的运行 issue 上。owner 处理完后由作者或 owner `/unlabel`。
 
 ## CLI
 
@@ -99,7 +106,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 | 命令 | 作用 |
 |---|---|
 | `sync` | 会话开始时运行：本地 `main` 和 fork 的 `main` 对齐 `ora-space/circus` |
-| `brief [--mine]` | 未关闭的 issue，我负责的在前，运行 issue 标出 parent |
+| `brief [--mine]` | 未关闭的 issue，分三组：我创建的、等 owner 的；其余我负责的；其他。组内按优先级排序 |
 | `new --title T [--label L]... [--body-file F]` | 新建 issue；`--label` 写进正文，由 bot 打上 |
 | `run N [--title T] [--body-file F]` | 为 #N 开运行 issue |
 | `show N` | 完整输出 issue 和全部评论 |
@@ -107,21 +114,36 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 | `assign N [+]@U... -@U...` | 评论 `/assign`、`/unassign` |
 | `close N --title T --summary-file F [--not-planned]` | 改标题、写总结、关闭 |
 | `memory` | 记忆索引 |
-| `setup` | 按登记表创建 label |
+| `setup` | owner 用：按登记表创建 label |
 | `bot` | 只在 GitHub Action 里运行 |
+
+## 看板
+
+[看板](https://github.com/orgs/ora-space/projects/4)（org Project，编号在 `circus.env` 的 `CIRCUS_PROJECT`）是 issue 的只读镜像，偶尔看看全局用，完全由 bot 维护，不需要人参与：bot 自己校正 Status 选项、创建 Priority 字段，每天定时全量同步一次所有未关闭的 issue。手动改的值不会写回 issue，下次同步时会被覆盖。运行 issue 不上看板。
+
+| 看板 Status | 来自 |
+|---|---|
+| Done | issue 已关闭 |
+| Needs Owner / In Review | `status:needs-owner` / `status:in-review` |
+| Running | 有未关闭的运行 issue |
+| Open | 其余 |
+
+Priority 字段来自 `priority:*`。`brief` 只列自己创建的、等 owner 的 issue；owner 要看所有人在等自己的事，看看板的 Needs Owner 一列。
 
 ## Bot
 
-[`.github/workflows/circus.yml`](../.github/workflows/circus.yml) 以 GitHub App 身份运行 `node scripts/cli.ts bot`（App 只授权 circus 仓库，Issues 读写、Metadata 只读，后者用于查询仓库权限；ID 在仓库变量 `CIRCUS_APP_ID`，私钥在 secret `CIRCUS_APP_PRIVATE_KEY`）。bot 忽略所有 Bot 账号触发的事件，所以自己的写入不会循环。PR 上的事件不处理。
+[`.github/workflows/circus.yml`](../.github/workflows/circus.yml) 以 GitHub App 身份运行 `node scripts/cli.ts bot`（App 只授权 circus 仓库，Issues 读写、Metadata 只读（查询仓库权限），以及组织 Projects 读写（同步看板）；ID 在仓库变量 `CIRCUS_APP_ID`，私钥在 secret `CIRCUS_APP_PRIVATE_KEY`）。bot 忽略所有 Bot 账号触发的事件，所以自己的写入不会循环。PR 上的事件不处理。
 
 | 事件 | 处理 |
 |---|---|
-| issue 打开 | 打上正文里写的 label；运行 issue 另打 `run`、挂为 parent 的子 issue、作者不在 parent 的 assignee 里时补上 |
+| issue 打开 | 打上正文里写的 label，同步看板；运行 issue 另打 `run`、挂为 parent 的子 issue、作者不在 parent 的 assignee 里时补上 |
 | 手动打上 label | 撤销并留言；打开后一分钟内、且正文里写了的 label 除外（`gh issue create --label` 产生的事件），运行 issue 上的 `run` 除外 |
 | 手动移除 label | 恢复并留言 |
 | 手动 assign / unassign | 撤销并留言 |
-| issue 关闭 | 正文不以 `## 总结` 开头就重新打开并留言；运行 issue 有总结时，把总结评论到 parent |
-| 新评论 | 执行其中的斜杠命令（见权限表）；发出者不是作者时查一次仓库权限 |
+| issue 关闭 | 正文不以 `## 总结` 开头就重新打开并留言；有总结时移除 `status:*`、同步看板为 Done；运行 issue 把总结评论到 parent，并重新同步 parent |
+| issue 重新打开 | 同步看板（运行 issue 同步它的 parent） |
+| 每天定时 / 在 Actions 页面手动触发 | 全量同步所有未关闭的 issue 到看板 |
+| 新评论 | 执行其中的斜杠命令（见权限表），同步看板；发出者不是作者时查一次仓库权限 |
 
 ## 开发
 
@@ -130,7 +152,7 @@ scripts/
   cli.ts            入口，注册各命令
   <command>/        每个子命令一个目录：index.ts 和 index.test.ts
   bot/              handle.ts 事件处理，github.ts 是 GitHub API 的端口
-  lib/              共享：gh/git 调用、label 登记表、斜杠命令、总结格式、运行 issue、测试替身
+  lib/              共享：gh/git 调用、label 登记表、斜杠命令、总结格式、运行 issue、看板、测试替身
 ```
 
 所有 GitHub 读写经过 `Context.gh`（命令）或 `GitHub` 端口（bot），测试用替身，不访问网络。`npm test` 跑全部测试，CI 在 [`.github/workflows/test.yml`](../.github/workflows/test.yml)。新增命令：建 `scripts/<command>/index.ts` 导出 `command`，在 `cli.ts` 注册，`cli.test.ts` 会检查两边一致。
