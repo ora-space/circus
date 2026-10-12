@@ -43,3 +43,16 @@ test('close requires a title and a non-empty summary', () => {
   assert.throws(() => command.run(['4', '--title', 't', '--summary-file', 'f'], ctx), /总结不能为空/);
   assert.equal(calls.length, 0);
 });
+
+test('close cleans up local work afterwards; a failure there does not undo the close', () => {
+  const { ctx, calls, lines } = fakeContext(gh(), { read: () => 's' });
+  command.run(['4', '--title', 't', '--summary-file', 'f'], ctx);
+  assert.ok(calls.some((c) => c.args.includes('graphql')));
+  assert.equal(lines[0], '#4 已关闭：t');
+  assert.match(lines[1], /^清理本地工作失败（issue 已关闭）.*可稍后运行 cleanup 4$/);
+
+  const kept = fakeContext(gh(), { read: () => 's' });
+  command.run(['4', '--title', 't', '--summary-file', 'f', '--keep-local'], kept.ctx);
+  assert.ok(!kept.calls.some((c) => c.args.includes('graphql')));
+  assert.deepEqual(kept.lines, ['#4 已关闭：t']);
+});

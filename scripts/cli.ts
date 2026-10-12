@@ -6,6 +6,7 @@ import { gh, git } from './lib/gh.ts';
 import { command as assign } from './assign/index.ts';
 import { command as bot } from './bot/index.ts';
 import { command as brief } from './brief/index.ts';
+import { command as cleanup } from './cleanup/index.ts';
 import { command as close } from './close/index.ts';
 import { command as depend } from './depend/index.ts';
 import { command as label } from './label/index.ts';
@@ -18,7 +19,7 @@ import { command as sync } from './sync/index.ts';
 import { command as whoami } from './whoami/index.ts';
 import { command as worktree } from './worktree/index.ts';
 
-export const COMMANDS: Record<string, Command> = { sync, whoami, brief, new: create, run, show, label, assign, depend, close, worktree, memory, setup, bot };
+export const COMMANDS: Record<string, Command> = { sync, whoami, brief, new: create, run, show, label, assign, depend, close, cleanup, worktree, memory, setup, bot };
 
 export function help(): string {
   const lines = Object.values(COMMANDS).map((c) => '  ' + c.usage.split('\n').join('\n  '));

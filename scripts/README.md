@@ -86,6 +86,12 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 2. 改标题：让标题直接说出结果，而不是最初的问题。
 3. 用中文写详细总结：结论、做了什么（链接 PR/commit）、被否定的方案及原因、遗留问题（另开的 issue 编号）。
 4. `node scripts/cli.ts close N --title "<新标题>" --summary-file <文件>`：总结写进正文最前面的 `## 总结` 一节，原正文保留在分隔线下，然后关闭。放弃的事项加 `--not-planned`。`--body-file` / `--summary-file` 读 UTF-8；在 Windows PowerShell 上不要用管道把中文喂给 `-`（会变成 `?`），见 `memory/preferences/powershell-utf8-gh.md`。
+5. 关闭后 `close` 自动清理你为这个 issue 做的本地工作（`--keep-local` 跳过；`cleanup N --dry-run` 可以先预览）。只清理同时满足下列条件的：
+   - 引用这个 issue 的 PR，由你的 fork 提出，已合并或已关闭；别人的 PR 不看也不碰；
+   - 本地有同名分支，分支上的提交全部在 PR 的 head 里（没推上去的提交会被保留）；
+   - 它的 worktree 在 `.worktrees/` 下，没有未提交的改动或未跟踪的文件；分支不在主目录检出。
+
+   删除 worktree 和本地分支，不动 fork 上的远程分支。任何一条不满足就保留并说明原因，由你自己判断。
 
 没有 `## 总结` 就关闭的 issue，bot 会重新打开并提示。
 
@@ -132,7 +138,7 @@ circus/
 1. 建 worktree：`node scripts/cli.ts worktree <repo> <branch>`。`ora-space/<repo>` 不存在时先 fork 并 clone；然后拉取 upstream 最新的 main，顺手把 fork 的 main 推到最新，再基于 `upstream/main` 建分支和 worktree。
 2. 在 worktree 里开发、commit，阶段性成果及时 push 到 fork：`git push -u origin <branch>`。
 3. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<n>`，PR 链接评论到 circus issue（或运行 issue）。
-4. PR 合并或关闭后清理：`git -C ora-space/<repo> worktree remove .worktrees/<name>`，再 `git -C ora-space/<repo> branch -D <branch>`。
+4. PR 合并或关闭后，关闭 issue 时 `close` 会自动清理对应的 worktree 和本地分支（规则见"关闭前先总结"）；也可以单独运行 `node scripts/cli.ts cleanup <issue>`。不要手动 `branch -D`，除非确认分支上没有没推上去的工作。
 
 不在 `ora-space/<repo>` 的主目录里开发：它只停在 main，作为 worktree 的母库。
 
@@ -169,7 +175,8 @@ circus/
 | `label N [+]L... -L...` | 评论 `/label`、`/unlabel` |
 | `assign N [+]@U... -@U...` | 评论 `/assign`、`/unassign` |
 | `depend N [+]#M... -#M...` | 评论 `/depend`、`/undepend` |
-| `close N --title T --summary-file F [--not-planned] [--for-author R]` | 改标题、写总结、关闭；只限作者，代关要写理由 |
+| `close N --title T --summary-file F [--not-planned] [--for-author R] [--keep-local]` | 改标题、写总结、关闭；只限作者，代关要写理由；关闭后清理本地工作 |
+| `cleanup N [--dry-run]` | 清理为 #N 做的本地 worktree 和分支：只限自己 fork 提出、已结束、没有额外提交、worktree 干净的 PR 分支 |
 | `worktree <repo> <type>/[<issue>-]<slug>` | 产品仓库：按需 fork 并 clone，基于最新 upstream main 建分支和 worktree |
 | `memory` | 记忆索引 |
 | `setup` | owner 用：按登记表创建 label |

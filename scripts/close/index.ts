@@ -1,12 +1,14 @@
 import { parseArgs } from 'node:util';
 import { issueNumber, UsageError, type Command } from '../lib/context.ts';
+import { cleanupIssue, reportCleanup } from '../lib/cleanup.ts';
 import { whoami } from '../lib/identity.ts';
 import { forAuthorLine, withSummary } from '../lib/summary.ts';
 
-const usage = `close N --title T --summary-file F [--not-planned] [--for-author REASON]
+const usage = `close N --title T --summary-file F [--not-planned] [--for-author REASON] [--keep-local]
     关闭 #N：改成能概括结果的标题，把详细总结写到正文最前面（原正文保留在分隔线下），再关闭。
     只有作者关闭自己的 issue；别人的 issue 应在里面提醒作者收尾。确需代关时加 --for-author 写明理由，
     总结第一行会记下"由 @你 代作者 @作者 关闭：理由"。
+    关闭后按 cleanup N 清理你为它做的本地 worktree 和分支；--keep-local 跳过。
     先用 show N 把整个 issue 读一遍再写总结。--summary-file 读 UTF-8 文件；- 为 stdin（Windows 勿用管道喂中文）。`;
 
 export const command: Command = {
@@ -20,6 +22,7 @@ export const command: Command = {
         'summary-file': { type: 'string' },
         'not-planned': { type: 'boolean', default: false },
         'for-author': { type: 'string' },
+        'keep-local': { type: 'boolean', default: false },
       },
     });
     const n = issueNumber(positionals[0], usage);
@@ -45,5 +48,12 @@ export const command: Command = {
     ctx.gh(['issue', 'edit', String(n), '-R', ctx.repo, '--title', values.title, '--body-file', '-'], withSummary(body, summary));
     ctx.gh(['issue', 'close', String(n), '-R', ctx.repo, '--reason', values['not-planned'] ? 'not planned' : 'completed']);
     ctx.out(`#${n} 已关闭：${values.title}`);
+    // The issue is closed either way; a cleanup failure is reported, not fatal.
+    if (values['keep-local']) return;
+    try {
+      for (const line of reportCleanup(cleanupIssue(ctx, n, me))) ctx.out(line);
+    } catch (e) {
+      ctx.out(`清理本地工作失败（issue 已关闭）：${(e as Error).message.split('\n')[0]}；可稍后运行 cleanup ${n}`);
+    }
   },
 };
