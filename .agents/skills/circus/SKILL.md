@@ -5,7 +5,7 @@ description: ora-space 的协作网：同步 ora-space/circus，加载长期记�
 
 # circus
 
-协议和记忆都在 `ora-space/circus` 仓库里，并随仓库演进；本 skill 只负责同步并交接。所有人都在自己的 circus 目录（clone 或 fork 的 clone）里工作，下面的命令在该目录下执行。产品仓库的 fork clone 在它下面的 `ora-space/<repo>`，开发用 `node scripts/cli.ts worktree` 建的 worktree，规则见 `scripts/README.md` 的"开发产品仓库"。
+协议和记忆都在 `ora-space/circus` 仓库里，并随仓库演进；本 skill 只负责同步并交接。所有人都在自己的 circus 目录（clone 或 fork 的 clone）里工作，下面的命令在该目录下执行。本地是 fork 时，issue 也一律在 upstream `ora-space/circus` 上进行，不在 fork 上开。产品仓库的 fork clone 在它下面的 `ora-space/<repo>`，开发用 `node scripts/cli.ts worktree` 建的 worktree，规则见 `scripts/README.md` 的"开发产品仓库"。
 
 1. 同步。每个会话开始都要执行：本地仓库可能是 fork，或者停在旧版本。
 

@@ -18,4 +18,4 @@ owner 驱动 ora-space 项目开发的协作网：状态放在 GitHub issue 上�
 
 label 和 assignee 由 bot 写：[`.github/workflows/circus.yml`](.github/workflows/circus.yml) 以 GitHub App 身份运行。这个 App 装在 ora-space 上，只授权 circus 仓库，权限是 Issues 读写、Metadata 只读和组织 Projects 读写；App ID 存在仓库变量 `CIRCUS_APP_ID`，私钥存在 secret `CIRCUS_APP_PRIVATE_KEY`。
 
-安装 skill：`ln -s "$PWD/skills/circus" ~/.claude/skills/circus`。其他 agent 工具同理，把 `skills/circus/SKILL.md` 放进各自的 skills 目录。在本仓库内工作时，`.claude/skills/circus` 已自动提供该 skill。
+skill 放在 `.agents/skills/`。在本仓库内工作时，Claude Code 经 `.claude/skills`（指向 `.agents/skills` 的符号链接）自动加载；其他 agent 工具把 `.agents/skills/circus/SKILL.md` 放进各自的 skills 目录，或用同样的方式链接。全局安装：`ln -s "$PWD/.agents/skills/circus" ~/.claude/skills/circus`。

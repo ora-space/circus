@@ -10,7 +10,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 
 所有人都在自己的 circus 目录（clone 或 fork 的 clone）里工作，本文路径都相对它；产品仓库的 fork clone 也放在它下面的 `ora-space/<repo>`。CLI 是 `node scripts/cli.ts`（Node ≥ 22.18，依赖 `git` 和 `gh`），各平台用法相同。
 
-1. 同步：**每个会话开始都要先同步 `ora-space/circus`**，因为本地仓库可能是 fork 或停在旧版本。运行 `node scripts/cli.ts sync`：本地 `main` 快进到 `ora-space/circus` 最新，origin 是 fork 时顺手把 fork 的 `main` 推到最新。完整步骤见 [`skills/circus/SKILL.md`](skills/circus/SKILL.md)；经 skill 进来的会话已完成这一步。同步失败时告诉 owner。
+1. 同步：**每个会话开始都要先同步 `ora-space/circus`**，因为本地仓库可能是 fork 或停在旧版本。运行 `node scripts/cli.ts sync`：本地 `main` 快进到 `ora-space/circus` 最新，origin 是 fork 时顺手把 fork 的 `main` 推到最新。完整步骤见 [`.agents/skills/circus/SKILL.md`](.agents/skills/circus/SKILL.md)；经 skill 进来的会话已完成这一步。同步失败时告诉 owner。
 2. 协议：完整阅读 [`scripts/README.md`](scripts/README.md)。
 3. issue：`node scripts/cli.ts brief`，列出未关闭的 issue，你负责的（你是作者或 assignee）在前。
 4. 记忆：`node scripts/cli.ts memory` 列出索引；`rules/` 全部读，其余按当前任务读正文（规则见 [`memory/README.md`](memory/README.md)）。
@@ -45,4 +45,4 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 
 ## 演进
 
-owner 对协作方式的建议（流程、label、权限、本文件）走同样的 PR 流程修改 `AGENTS.md`、`scripts/` 或 `.github/`。`skills/circus/SKILL.md` 只负责引导，协议细节写在仓库里。
+owner 对协作方式的建议（流程、label、权限、本文件）走同样的 PR 流程修改 `AGENTS.md`、`scripts/`、`.agents/skills/` 或 `.github/`。`.agents/skills/circus/SKILL.md` 只负责引导，协议细节写在仓库里。
