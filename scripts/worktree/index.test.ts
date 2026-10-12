@@ -49,7 +49,7 @@ test('worktree in an existing fork clone: fetch upstream, refresh the fork, add 
     'remote',
     'push -q origin refs/remotes/upstream/main:refs/heads/main',
     'rev-parse --git-path info/exclude',
-    'worktree add -q --no-track -b fix/42-startup-crash <root>/ora-space/desktop/.worktrees/42-startup-crash upstream/main',
+    `worktree add -q --no-track -b fix/42-startup-crash ${join('<root>', 'ora-space', 'desktop', '.worktrees', '42-startup-crash')} upstream/main`,
     'rev-parse --short upstream/main',
   ]);
   assert.equal(readFileSync(join(dir, '.git', 'info', 'exclude'), 'utf8'), '# keep\n/.worktrees/\n');
@@ -66,7 +66,7 @@ test('worktree forks and clones a missing repo first', () => {
   const { ctx, calls, lines } = fakeContext((args) => (args[0] === 'api' ? 'alice\n' : ''), { root, git: g.run });
   command.run(['desktop', 'docs/readme'], ctx);
   assert.deepEqual(calls[0].args, ['repo', 'fork', 'ora-space/desktop', '--clone=false']);
-  assert.equal(g.calls[0], 'clone -q https://github.com/alice/desktop.git <root>/ora-space/desktop');
+  assert.equal(g.calls[0], `clone -q https://github.com/alice/desktop.git ${join('<root>', 'ora-space', 'desktop')}`);
   assert.equal(g.calls[2], 'remote add upstream https://github.com/ora-space/desktop.git');
   assert.equal(lines[0], '已 clone fork alice/desktop → ora-space/desktop');
 });
