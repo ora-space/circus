@@ -168,7 +168,7 @@ circus/
 |---|---|
 | `sync` | 会话开始时运行：本地 `main` 和 fork 的 `main` 对齐 `ora-space/circus` |
 | `whoami` | 当前账号是 owner 还是成员，也就是和 agent 对话的人 |
-| `brief [--mine]` | 先说明身份，再列未关闭的 issue，分四组：待关闭（我创建的，关联 PR 已合并、被 bot 重新打开过、或 parent 已关闭的运行 issue，最优先处理）；我创建的、等 owner 的；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
+| `brief [--mine]` | 先说明身份，再列未关闭的 issue，分四组：待关闭（我创建的，关联 PR 已合并、被 bot 重新打开过、或 parent 已关闭的运行 issue，最优先处理）；等 owner 的（owner 看到所有人的 `status:needs-owner` 和 `status:in-review`，成员只看到自己创建的 `status:needs-owner`）；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
 | `new --title T [--label L]... [--depend N]... [--epic N] [--body-file F]` | 新建 issue；`--label`、`--depend` 写进正文，由 bot 打上、设为依赖；`--epic` 写"总事项：#N" |
 | `run N [--title T] [--body-file F]` | 为 #N 开运行 issue |
 | `show N` | 完整输出 issue 和全部评论 |
@@ -194,7 +194,7 @@ circus/
 | Running | 有未关闭的运行 issue |
 | Open | 其余 |
 
-Priority 字段来自 `priority:*`。`brief` 只列自己创建的、等 owner 的 issue；owner 要看所有人在等自己的事，看看板的 Needs Owner 一列。
+Priority 字段来自 `priority:*`。owner 的 `brief` 已经列出所有人在等 owner 的 issue（"等我处理"一组）；成员的 `brief` 只列自己创建的，全局情况看看板的 Needs Owner 和 In Review 两列。
 
 ## Bot
 

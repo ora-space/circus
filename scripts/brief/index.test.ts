@@ -67,6 +67,33 @@ test('brief: issues of mine that look done come first, others\' never', () => {
   );
 });
 
+test('brief for the owner: everyone\'s issues waiting on the owner come right after the closable ones', () => {
+  const issues = [
+    issue(1, 'theirs waits', 'bob', { labels: ['status:needs-owner'] }),
+    issue(2, 'their review', 'bob', { labels: ['status:in-review', 'priority:p0'] }),
+    issue(3, 'mine waits', 'me', { labels: ['status:needs-owner'] }),
+    issue(4, 'mine merged', 'me', { labels: ['status:in-review'], mergedPrs: ['#9'] }),
+    issue(5, 'plain', 'bob'),
+  ];
+  assert.equal(
+    format(issues, 'me', false, true),
+    [
+      '## 待关闭（我创建的） (1)',
+      '- #4 mine merged（PR #9 已合并）  @me [status:in-review]',
+      '',
+      '## 等我处理（owner：所有 needs-owner 和 in-review） (3)',
+      '- #2 their review  @bob [status:in-review priority:p0]',
+      '- #1 theirs waits  @bob [status:needs-owner]',
+      '- #3 mine waits  @me [status:needs-owner]',
+      '',
+      '## 我负责的（@me） (0)',
+      '',
+      '## 其他 (1)',
+      '- #5 plain  @bob',
+    ].join('\n'),
+  );
+});
+
 test('tree nests sub-items and runs, marks waits, and notes parents outside the section', () => {
   const lines = tree([
     issue(11, '总事项', 'a'),

@@ -8,7 +8,8 @@ import { parentOf } from '../lib/run.ts';
 const usage = `brief [--mine]
     先说明你是谁（owner 还是成员），再列出未关闭的 issue，分四组：
       待关闭（我创建的）：有已合并的关联 PR、被 bot 重新打开过、或 parent 已关闭的运行 issue，最优先处理；
-      等 owner（我创建的，status:needs-owner）；其余我负责的（我是作者或 assignee）；其他。
+      owner 是"等我处理"：所有人的 status:needs-owner 和 status:in-review；成员是"等 owner"：我创建的 status:needs-owner；
+      其余我负责的（我是作者或 assignee）；其他。
     每组画成树：子事项（正文"总事项：#N"）和运行 issue 挂在所属 issue 下；组内按优先级排序；
     有未完成依赖的标出"等待"。--mine 不列"其他"。`;
 
@@ -90,18 +91,25 @@ export function tree(list: ListedIssue[], hintsOf: (i: ListedIssue) => string[] 
   return out;
 }
 
-export function format(issues: ListedIssue[], me: string, onlyMine: boolean): string {
+const WAITING_ON_OWNER = ['status:needs-owner', 'status:in-review'];
+
+export function format(issues: ListedIssue[], me: string, onlyMine: boolean, owner = false): string {
   const sorted = [...issues].sort((a, b) => rank(a) - rank(b));
   const open = new Set(issues.map((i) => i.number));
   // Only the author closes an issue, so only mine can be in this group; it comes first.
   const hints = (i: ListedIssue) => (i.author === me ? closeHints(i, open) : []);
   const closable = sorted.filter((i) => hints(i).length);
-  // Only issues I opened: what I am blocked on, not everyone's queue (the board shows that).
-  const waiting = sorted.filter((i) => !closable.includes(i) && i.author === me && i.labels.includes('status:needs-owner'));
+  // The owner sees everyone's issues waiting on them: that is the owner's queue. A member sees
+  // only their own issues waiting on the owner, not everyone's queue.
+  const waiting = sorted.filter(
+    (i) =>
+      !closable.includes(i) &&
+      (owner ? i.labels.some((l) => WAITING_ON_OWNER.includes(l)) : i.author === me && i.labels.includes('status:needs-owner')),
+  );
   const rest = sorted.filter((i) => !closable.includes(i) && !waiting.includes(i));
   const sections: [string, ListedIssue[]][] = [
     ['待关闭（我创建的）', closable],
-    ['等 owner（我创建的）', waiting],
+    [owner ? '等我处理（owner：所有 needs-owner 和 in-review）' : '等 owner（我创建的）', waiting],
     [`我负责的（@${me}）`, rest.filter((i) => mine(i, me))],
   ];
   if (!onlyMine) sections.push(['其他', rest.filter((i) => !mine(i, me))]);
@@ -182,6 +190,6 @@ export const command: Command = {
     const { values } = parseArgs({ args, options: { mine: { type: 'boolean', default: false } } });
     const id = whoami(ctx);
     ctx.out(describeIdentity(id) + '\n');
-    ctx.out(format(fetchOpen(ctx.gh, ctx.repo), id.login, values.mine));
+    ctx.out(format(fetchOpen(ctx.gh, ctx.repo), id.login, values.mine, id.owner));
   },
 };
