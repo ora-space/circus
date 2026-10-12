@@ -34,10 +34,10 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 
 ## 写入边界
 
-- 所有讨论统一在 circus 的 issue 里进行。circus 是私有仓库，成员以协作者身份参与。
+- 所有讨论统一在 upstream 仓库 `ora-space/circus` 的 issue 里进行，即使本地是 fork 的 clone。fork 只用来提 PR，不在 fork 上开 issue、评论或改 label。`node scripts/cli.ts` 的命令总是指向 `ora-space/circus`；直接用 `gh issue` / `gh pr` 时必须带 `-R ora-space/circus`，否则 gh 可能落到 fork 上。circus 是私有仓库，成员以协作者身份参与。
 - issue 的标题、正文、评论和总结一律用中文；代码、命令、label、路径、报错原文和专有名词保留原样。
 - label 和 assignee 只通过 bot 修改：打开 issue 时写在正文里，之后用评论里的斜杠命令。权限见 [`scripts/README.md`](scripts/README.md#3-权限)。
-- 记忆和协议只能经 PR 改，合并由 owner 决定。
+- 记忆和协议只能经 PR 改，PR 开在 `ora-space/circus`（从 fork 提时 `gh pr create -R ora-space/circus --head <login>:<branch>`），合并由 owner 决定。
 - Ora 产品仓库只承载代码和 PR，不在那里开 issue 或展开讨论；产品仓库里已有的 issue 转为 circus issue（正文链接原 issue），后续讨论在 circus。owner 已经说清楚要做的事可以直接开 PR，其余写入先得到 owner 同意。
 - 在产品仓库工作时，owner 没有另外指明就按 [开发产品仓库](scripts/README.md#开发产品仓库)：fork clone 在 `ora-space/<repo>`，每项开发用 `node scripts/cli.ts worktree` 基于最新 upstream main 建 worktree。先遵守该仓库的 `AGENTS.md` / `CLAUDE.md`；feature 和 refactor 先按 [specs 根决策门禁](memory/rules/specs-root-decision-gate.md) 检查；commit 按 [commit 拆分偏好](memory/preferences/pr-commit-split.md)。
 - 产品仓库多为公开仓库：PR 描述用 `Refs ora-space/circus#<n>` 关联 issue，但不把 circus 里的讨论和记忆内容复制过去。PR 链接评论到 issue。
