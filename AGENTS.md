@@ -39,6 +39,8 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 - `status:needs-owner` 或 `status:in-review`，用户是 owner：把待决的点和各选项的代价讲给 owner，按 owner 的话在 issue 里写下结论，再 `/label status:needs-author` 交回作者。
 - 其他情况：向用户概括新动静，问清要不要跟进；回复写在 issue 里。
 
+`brief` 也会在你负责的 issue 行尾标出"N 条新回复"，不用等别人提醒。
+
 **决策**是最需要留痕的输入：待决的开成 `type:decision` 并打 `status:needs-owner`，正文列选项、依据、代价，请 owner 拍板。owner 拍板时在 issue 里写下结论，并 `/label status:needs-author` 提醒作者跟进；作者按结论处理完，按 [关闭前先总结](scripts/README.md#5-关闭前先总结) 关闭。结论长期有效时，再开记忆 PR；属于 Ora 产品架构的，提议在 [ora-space/specs](https://github.com/ora-space/specs) 写 ADR。
 
 ## 写入边界

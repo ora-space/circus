@@ -163,7 +163,7 @@ circus/
   - 等 owner 的事，作者给自己的 issue 打 `status:needs-owner`（PR 待审打 `status:in-review`）；运行 issue 的作者改不了 parent，就打在自己的运行 issue 上。
   - owner 回复、拍板或提出要求后，打 `/label status:needs-author`，它会替换掉 `needs-owner`，作者的 `brief` 会把这个 issue 放进"等我跟进"。只是顺手评论、不需要作者动作时，直接 `/unlabel status:needs-owner`。
   - 作者跟进后 `/unlabel status:needs-author`，或者需要 owner 再看时改回 `status:needs-owner`。
-  - 球传过来时，用 `node scripts/cli.ts updates N` 看对方上次之后说了什么：它以你上次发言为界，列出之后的评论、谁用斜杠命令改了状态、status 的完整轨迹。
+  - 球传过来时，用 `node scripts/cli.ts updates N` 看对方上次之后说了什么：它以你上次发言为界，列出之后的评论、谁用斜杠命令改了状态、status 的完整轨迹。`brief` 在你负责的 issue 行尾标出"N 条新回复"（不算 bot 和纯斜杠命令）。
 
 ## CLI
 

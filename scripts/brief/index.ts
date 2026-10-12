@@ -4,6 +4,7 @@ import { epicOf } from '../lib/deps.ts';
 import { graphql } from '../lib/gh.ts';
 import { describeIdentity, whoami } from '../lib/identity.ts';
 import { parentOf } from '../lib/run.ts';
+import { parseSlash } from '../lib/slash.ts';
 
 const usage = `brief [--mine]
     先说明你是谁（owner 还是成员），再列出未关闭的 issue，分五组：
@@ -12,7 +13,7 @@ const usage = `brief [--mine]
       owner 是"等我处理"：所有人的 status:needs-owner 和 status:in-review；成员是"等 owner"：我创建的 status:needs-owner；
       其余我负责的（我是作者或 assignee）；其他。
     每组画成树：子事项（正文"总事项：#N"）和运行 issue 挂在所属 issue 下；组内按优先级排序；
-    有未完成依赖的标出"等待"。--mine 不列"其他"。空的分组不显示。`;
+    有未完成依赖的标出"等待"；我负责的 issue 在我上次评论之后有别人的回复时标出"N 条新回复"。--mine 不列"其他"。空的分组不显示。`;
 
 export interface ListedIssue {
   number: number;
@@ -24,6 +25,17 @@ export interface ListedIssue {
   waitingOn: number[]; // open issues this one is blocked by
   mergedPrs: string[]; // merged PRs that reference it, e.g. ora-space/desktop#12
   reopenedByBot: boolean; // a close was undone (no summary, or not the author)
+  comments: { author: string; bot: boolean; body: string }[]; // the latest ones, oldest first
+}
+
+// People's comments after my latest one, ignoring bots and pure slash commands.
+export function newReplies(i: ListedIssue, me: string): number {
+  const last = i.comments.map((c) => c.author).lastIndexOf(me);
+  return i.comments.slice(last + 1).filter((c) => {
+    if (c.bot || c.author === me) return false;
+    const lines = c.body.split(/\r?\n/).filter((l) => l.trim());
+    return parseSlash(c.body).length < lines.length;
+  }).length;
 }
 
 const mine = (i: ListedIssue, me: string) => i.author === me || i.assignees.includes(me);
@@ -48,8 +60,9 @@ export function closeHints(i: ListedIssue, open: Set<number>): string[] {
   return hints;
 }
 
-function describe(i: ListedIssue, nested: boolean, hints: string[] = []): string {
+function describe(i: ListedIssue, nested: boolean, hints: string[] = [], replies = 0): string {
   const notes: string[] = [...hints];
+  if (replies) notes.push(`${replies} 条新回复，用 updates ${i.number} 查看`);
   const up = upOf(i);
   if (!nested && up !== null) notes.push(parentOf(i.body) !== null ? `运行 → #${up}` : `总事项 #${up}`);
   if (i.waitingOn.length) notes.push(`等待 ${i.waitingOn.map((n) => `#${n}`).join(' ')}`);
@@ -59,7 +72,7 @@ function describe(i: ListedIssue, nested: boolean, hints: string[] = []): string
 }
 
 // The issues of one section as a forest; an issue nests only under an issue of the same section.
-export function tree(list: ListedIssue[], hintsOf: (i: ListedIssue) => string[] = () => []): string[] {
+export function tree(list: ListedIssue[], hintsOf: (i: ListedIssue) => string[] = () => [], repliesOf: (i: ListedIssue) => number = () => 0): string[] {
   const byNumber = new Map(list.map((i) => [i.number, i]));
   const up = (n: number) => {
     const u = upOf(byNumber.get(n)!);
@@ -83,7 +96,8 @@ export function tree(list: ListedIssue[], hintsOf: (i: ListedIssue) => string[] 
   }
   const out: string[] = [];
   const walk = (i: ListedIssue, prefix: string, last: boolean, depth: number) => {
-    out.push(depth === 0 ? `- ${describe(i, false, hintsOf(i))}` : `${prefix}${last ? '└─ ' : '├─ '}${describe(i, true, hintsOf(i))}`);
+    const text = describe(i, depth > 0, hintsOf(i), repliesOf(i));
+    out.push(depth === 0 ? `- ${text}` : `${prefix}${last ? '└─ ' : '├─ '}${text}`);
     const kids = children.get(i.number) ?? [];
     const next = depth === 0 ? '  ' : prefix + (last ? '   ' : '│  ');
     kids.forEach((k, idx) => walk(k, next, idx === kids.length - 1, depth + 1));
@@ -100,6 +114,8 @@ export function format(issues: ListedIssue[], me: string, onlyMine: boolean, own
   // Only the author closes an issue, so only mine can be in this group; it comes first.
   const hints = (i: ListedIssue) => (i.author === me ? closeHints(i, open) : []);
   const closable = sorted.filter((i) => hints(i).length);
+  // New replies matter on issues I am responsible for.
+  const replies = (i: ListedIssue) => (mine(i, me) ? newReplies(i, me) : 0);
   // The owner sees everyone's issues waiting on them: that is the owner's queue. A member sees
   // only their own issues waiting on the owner, not everyone's queue.
   const waiting = sorted.filter(
@@ -121,7 +137,7 @@ export function format(issues: ListedIssue[], me: string, onlyMine: boolean, own
   const shown = sections.filter(([, list]) => list.length);
   if (!shown.length) return '没有未关闭的 issue';
   return shown
-    .map(([title, list]) => [`## ${title} (${list.length})`, ...tree(list, hints), ''].join('\n'))
+    .map(([title, list]) => [`## ${title} (${list.length})`, ...tree(list, hints, replies), ''].join('\n'))
     .join('\n')
     .trimEnd();
 }
@@ -134,6 +150,7 @@ interface Node {
   assignees: { nodes: { login: string }[] };
   labels: { nodes: { name: string }[] };
   blockedBy: { nodes: { number: number; state: string }[] };
+  comments: { nodes: { author: { login: string; __typename: string } | null; body: string }[] };
   timelineItems: {
     nodes: (
       | { __typename: 'CrossReferencedEvent'; source: { __typename: string; number?: number; merged?: boolean; repository?: { nameWithOwner: string } } }
@@ -146,6 +163,7 @@ const QUERY = `query($o: String!, $r: String!, $after: String) { repository(owne
   issues(states: OPEN, first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes {
     number title body author { login } assignees(first: 20) { nodes { login } } labels(first: 30) { nodes { name } }
     blockedBy(first: 30) { nodes { number state } }
+    comments(last: 20) { nodes { author { login __typename } body } }
     timelineItems(last: 50, itemTypes: [CROSS_REFERENCED_EVENT, REOPENED_EVENT]) { nodes { __typename
       ... on CrossReferencedEvent { source { __typename ... on PullRequest { number merged repository { nameWithOwner } } } }
       ... on ReopenedEvent { actor { __typename } } } } } } } }`;
@@ -184,6 +202,7 @@ export function fetchOpen(run: Parameters<typeof graphql>[0], repo: string): Lis
           .sort((a, b) => a - b),
         mergedPrs: [...new Set(mergedPrs)],
         reopenedByBot: last?.__typename === 'ReopenedEvent' && last.actor?.__typename === 'Bot',
+        comments: n.comments.nodes.map((c) => ({ author: c.author?.login ?? 'ghost', bot: c.author?.__typename === 'Bot', body: c.body })),
       });
     }
     after = pageInfo.hasNextPage ? pageInfo.endCursor : null;

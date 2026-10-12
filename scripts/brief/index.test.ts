@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { command, format, tree, type ListedIssue } from './index.ts';
+import { command, format, newReplies, tree, type ListedIssue } from './index.ts';
 import { fakeContext } from '../lib/testing.ts';
 
 const issue = (number: number, title: string, author: string, extra: Partial<ListedIssue> = {}): ListedIssue => ({
@@ -13,6 +13,7 @@ const issue = (number: number, title: string, author: string, extra: Partial<Lis
   waitingOn: [],
   mergedPrs: [],
   reopenedByBot: false,
+  comments: [],
   ...extra,
 });
 
@@ -110,6 +111,16 @@ test('brief: issues of mine the owner answered come right after the closable one
   assert.equal(format([], 'me', false), '没有未关闭的 issue');
 });
 
+test('brief marks people\'s replies after my latest comment on issues I am responsible for', () => {
+  const c = (author: string, body = 'text', bot = false) => ({ author, bot, body });
+  const mineReplied = issue(1, 'mine', 'me', { comments: [c('bob'), c('me'), c('bob'), c('owner', '/label status:needs-author'), c('bot', 'x', true), c('owner', '结论如下')] });
+  assert.equal(newReplies(mineReplied, 'me'), 2);
+  assert.equal(newReplies(issue(2, 'quiet', 'me', { comments: [c('bob'), c('me')] }), 'me'), 0);
+  const text = format([mineReplied, issue(3, 'theirs', 'bob', { comments: [c('carol')] })], 'me', false);
+  assert.match(text, /- #1 mine（2 条新回复，用 updates 1 查看）  @me/);
+  assert.match(text, /- #3 theirs  @bob/);
+});
+
 test('tree nests sub-items and runs, marks waits, and notes parents outside the section', () => {
   const lines = tree([
     issue(11, '总事项', 'a'),
@@ -145,6 +156,7 @@ test('brief pages through GraphQL and keeps only open blockers', () => {
     assignees: { nodes: [] },
     labels: { nodes: [] },
     blockedBy: { nodes: blockers.map(([n, state]) => ({ number: n, state })) },
+    comments: { nodes: [] },
     timelineItems: {
       nodes: [
         { __typename: 'CrossReferencedEvent', source: { __typename: 'PullRequest', number: 7, merged: number === 1, repository: { nameWithOwner: 'ora-space/circus' } } },
