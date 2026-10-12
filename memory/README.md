@@ -32,4 +32,4 @@ scope: ora-space      # 适用范围：all、ora-space，或具体仓库名如 d
 
 ## 修改
 
-记忆只经 circus 的 PR 修改，打 `memory` label，owner 合并即确认。一个 PR 一个主题；PR 描述写明来源（owner 的原话或相关 issue）和为什么放这个目录。过时的记忆直接删除，git 历史就是归档。
+记忆只经 `ora-space/circus` 的 PR 修改，owner 合并即确认。一个 PR 一个主题；PR 描述写明来源（owner 的原话或相关 issue）和为什么放这个目录。过时的记忆直接删除，git 历史就是归档。
