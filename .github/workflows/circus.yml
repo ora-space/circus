@@ -1,28 +1,29 @@
-# Keeps the circus database consistent: links run issues to their item, derives item
-# status from runs, and mirrors status/priority labels onto the org Project board.
+# The circus bot: the only writer of labels and assignees. See scripts/README.md.
 name: circus
 
 on:
   issues:
-    types: [opened, closed, reopened, labeled, unlabeled]
+    types: [opened, closed, labeled, unlabeled, assigned, unassigned]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
 
 jobs:
-  sync:
+  bot:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - id: app
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ vars.CIRCUS_APP_ID }}
           private-key: ${{ secrets.CIRCUS_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
-      - uses: actions/github-script@v7
-        with:
-          github-token: ${{ steps.app.outputs.token }}
-          script: |
-            const handle = require('./.github/scripts/circus.js');
-            await handle({ github, context, core });
+      - run: node scripts/cli.ts bot
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}

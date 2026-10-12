@@ -1,0 +1,12 @@
+{
+  "name": "circus",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "circus": "node scripts/cli.ts",
+    "test": "node --test \"scripts/**/*.test.ts\""
+  }
+}
