@@ -70,7 +70,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 1. `node scripts/cli.ts show N` 把整个 issue（正文和全部评论）读一遍。
 2. 改标题：让标题直接说出结果，而不是最初的问题。
 3. 用中文写详细总结：结论、做了什么（链接 PR/commit）、被否定的方案及原因、遗留问题（另开的 issue 编号）。
-4. `node scripts/cli.ts close N --title "<新标题>" --summary-file <文件>`：总结写进正文最前面的 `## 总结` 一节，原正文保留在分隔线下，然后关闭。放弃的事项加 `--not-planned`。
+4. `node scripts/cli.ts close N --title "<新标题>" --summary-file <文件>`：总结写进正文最前面的 `## 总结` 一节，原正文保留在分隔线下，然后关闭。放弃的事项加 `--not-planned`。`--body-file` / `--summary-file` 读 UTF-8；在 Windows PowerShell 上不要用管道把中文喂给 `-`（会变成 `?`），见 `memory/preferences/powershell-utf8-gh.md`。
 
 没有 `## 总结` 就关闭的 issue，bot 会重新打开并提示。
 

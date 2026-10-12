@@ -4,7 +4,7 @@ import { familyOf } from '../lib/labels.ts';
 
 const usage = `new --title T [--label L]... [--body-file F]
     新建 issue 并输出链接。--label 写进正文，由 bot 在 issue 打开时打上（只限可由正文设置的 label）；
-    --body-file - 读 stdin。`;
+    --body-file 读 UTF-8 文件；- 为 stdin（Windows 勿用管道喂中文，见 memory/preferences/powershell-utf8-gh.md）。`;
 
 // Labels cannot be passed to `gh issue create`: the bot reverts labels it did not set.
 // They go into the body, where the bot matches them when the issue opens.
