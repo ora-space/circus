@@ -81,6 +81,42 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 3. **用中文重新组织语言**写成 issue 标题和正文（不照抄原话）：标题说清楚要什么；正文写背景、目标或复现步骤、验收条件。然后 `node scripts/cli.ts new`。
 4. **开始调研**，把所有发现和思考评论到 issue：读了哪些代码和文档、结论、考虑过的方案和取舍、还没想清楚的点。调研过程留在 issue 里，而不是只留在对话里。
 
+## 开发产品仓库
+
+owner 没有另外指明时，按下面的方式工作。
+
+**目录**：产品仓库的 fork clone 放在 circus 目录下的 `ora-space/<repo>`（已在 `.gitignore` 里），origin 是自己的 fork，upstream 是 `ora-space/<repo>`。每项开发一个 worktree，放在 `ora-space/<repo>/.worktrees/` 下；这个目录写进 clone 的 `.git/info/exclude`，不改产品仓库的 `.gitignore`。
+
+```text
+circus/
+  ora-space/
+    desktop/                       fork clone，停在 main，不在这里直接开发
+      .worktrees/
+        42-startup-crash/          分支 fix/42-startup-crash
+        43-tray-menu/              分支 feat/43-tray-menu
+```
+
+**命名**：
+
+| 什么 | 规则 | 例子 |
+|---|---|---|
+| 分支 | `<type>/<issue>-<slug>`；没有对应 issue 时 `<type>/<slug>` | `fix/42-startup-crash` |
+| type | 和 commit 类型一致：feat、fix、refactor、perf、docs、test、chore、build、ci | |
+| issue | circus issue 编号；在运行 issue 里做的写 parent 的编号 | `42` |
+| slug | 小写英文、数字，用 `-` 连接，2–5 个词，说清楚做什么 | `startup-crash` |
+| worktree 目录 | 分支名去掉 `<type>/` | `.worktrees/42-startup-crash` |
+
+同一个 issue 拆给多个 agent 时，各自用不同的 slug（如 `42-crash-frontend`、`42-crash-backend`）。
+
+**步骤**：
+
+1. 建 worktree：`node scripts/cli.ts worktree <repo> <branch>`。`ora-space/<repo>` 不存在时先 fork 并 clone；然后拉取 upstream 最新的 main，顺手把 fork 的 main 推到最新，再基于 `upstream/main` 建分支和 worktree。
+2. 在 worktree 里开发、commit，阶段性成果及时 push 到 fork：`git push -u origin <branch>`。
+3. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<n>`，PR 链接评论到 circus issue（或运行 issue）。
+4. PR 合并或关闭后清理：`git -C ora-space/<repo> worktree remove .worktrees/<name>`，再 `git -C ora-space/<repo> branch -D <branch>`。
+
+不在 `ora-space/<repo>` 的主目录里开发：它只停在 main，作为 worktree 的母库。
+
 ## Label 登记表
 
 登记表在 [`lib/labels.ts`](lib/labels.ts)，`node scripts/cli.ts setup` 按它创建仓库 label。
@@ -113,6 +149,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 | `label N [+]L... -L...` | 评论 `/label`、`/unlabel` |
 | `assign N [+]@U... -@U...` | 评论 `/assign`、`/unassign` |
 | `close N --title T --summary-file F [--not-planned]` | 改标题、写总结、关闭 |
+| `worktree <repo> <type>/[<issue>-]<slug>` | 产品仓库：按需 fork 并 clone，基于最新 upstream main 建分支和 worktree |
 | `memory` | 记忆索引 |
 | `setup` | owner 用：按登记表创建 label |
 | `bot` | 只在 GitHub Action 里运行 |

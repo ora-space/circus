@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canonicalRemote, command } from './index.ts';
+import { command } from './index.ts';
+import { canonicalRemote } from '../lib/remote.ts';
 import { fakeContext } from '../lib/testing.ts';
 
 const FORK = [

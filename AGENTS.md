@@ -8,7 +8,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 
 ## 会话开始
 
-所有人都在自己的 circus 目录（clone 或 fork 的 clone）里工作，本文路径都相对它。CLI 是 `node scripts/cli.ts`（Node ≥ 22.18，依赖 `git` 和 `gh`），各平台用法相同。
+所有人都在自己的 circus 目录（clone 或 fork 的 clone）里工作，本文路径都相对它；产品仓库的 fork clone 也放在它下面的 `ora-space/<repo>`。CLI 是 `node scripts/cli.ts`（Node ≥ 22.18，依赖 `git` 和 `gh`），各平台用法相同。
 
 1. 同步：**每个会话开始都要先同步 `ora-space/circus`**，因为本地仓库可能是 fork 或停在旧版本。运行 `node scripts/cli.ts sync`：本地 `main` 快进到 `ora-space/circus` 最新，origin 是 fork 时顺手把 fork 的 `main` 推到最新。完整步骤见 [`skills/circus/SKILL.md`](skills/circus/SKILL.md)；经 skill 进来的会话已完成这一步。同步失败时告诉 owner。
 2. 协议：完整阅读 [`scripts/README.md`](scripts/README.md)。
@@ -39,7 +39,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 - label 和 assignee 只通过 bot 修改：打开 issue 时写在正文里，之后用评论里的斜杠命令。权限见 [`scripts/README.md`](scripts/README.md#3-权限)。
 - 记忆和协议只能经 PR 改，合并由 owner 决定。
 - Ora 产品仓库只承载代码和 PR，不在那里开 issue 或展开讨论；产品仓库里已有的 issue 转为 circus issue（正文链接原 issue），后续讨论在 circus。owner 已经说清楚要做的事可以直接开 PR，其余写入先得到 owner 同意。
-- 在产品仓库工作时，先遵守该仓库的 `AGENTS.md` / `CLAUDE.md`；feature 和 refactor 先按 [specs 根决策门禁](memory/rules/specs-root-decision-gate.md) 检查；commit 按 [commit 拆分偏好](memory/preferences/pr-commit-split.md)。
+- 在产品仓库工作时，owner 没有另外指明就按 [开发产品仓库](scripts/README.md#开发产品仓库)：fork clone 在 `ora-space/<repo>`，每项开发用 `node scripts/cli.ts worktree` 基于最新 upstream main 建 worktree。先遵守该仓库的 `AGENTS.md` / `CLAUDE.md`；feature 和 refactor 先按 [specs 根决策门禁](memory/rules/specs-root-decision-gate.md) 检查；commit 按 [commit 拆分偏好](memory/preferences/pr-commit-split.md)。
 - 产品仓库多为公开仓库：PR 描述用 `Refs ora-space/circus#<n>` 关联 issue，但不把 circus 里的讨论和记忆内容复制过去。PR 链接评论到 issue。
 - 进度和讨论只存在 issue 里；记忆和协议文件里不写进度、TODO 或状态。
 

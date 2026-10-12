@@ -33,3 +33,6 @@ dist-ssr
 /drafts/
 
 /memories
+
+# 产品仓库的 fork clone，见 scripts/README.md 的"开发产品仓库"
+/ora-space/
