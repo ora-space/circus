@@ -127,11 +127,11 @@ circus/
 |---|---|---|
 | 分支 | `<type>/<issue>-<slug>`；没有对应 issue 时 `<type>/<slug>` | `fix/42-startup-crash` |
 | type | 和 commit 类型一致：feat、fix、refactor、perf、docs、test、chore、build、ci | |
-| issue | circus issue 编号；在运行 issue 里做的写 parent 的编号 | `42` |
+| issue | circus issue 编号；在运行 issue 里做的写运行 issue 的编号，和 PR 的 `Refs` 一致 | `42` |
 | slug | 小写英文、数字，用 `-` 连接，2–5 个词，说清楚做什么 | `startup-crash` |
 | worktree 目录 | 分支名去掉 `<type>/` | `.worktrees/42-startup-crash` |
 
-同一个 issue 拆给多个 agent 时，各自用不同的 slug（如 `42-crash-frontend`、`42-crash-backend`）。
+同一个 issue 拆给多个 agent 时，每人有自己的运行 issue，分支编号自然不同。
 
 **步骤**：
 
