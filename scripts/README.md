@@ -135,13 +135,16 @@ circus/
 
 同一个 issue 拆给多个 agent 时，每人有自己的运行 issue，分支编号自然不同。
 
+**PR 只装交付物**：代码、测试、迁移，以及仓库约定长期维护的文档（specs 的 ADR、核心用例、领域词汇；各仓库 `docs/` 下的正式说明）。开发过程中的计划、进度、实现日志、调研笔记和验收流水账属于过程记录，写在运行 issue 里；它们一旦合入 main 就会和实现脱节，又被后来的人和 agent 当成依据。仓库为跨会话协作留了过程笔记目录的（例如 cloud 的 `plans/<主题>/`），按该仓库的说明在合并前删除。
+
 **步骤**：
 
 1. 开运行 issue：`node scripts/cli.ts run N`。
 2. 建 worktree：`node scripts/cli.ts worktree <repo> <branch>`。`ora-space/<repo>` 不存在时先 fork 并 clone；然后拉取 upstream 最新的 main，顺手把 fork 的 main 推到最新，再基于 `upstream/main` 建分支和 worktree。
 3. 在 worktree 里开发、commit，阶段性成果及时 push 到 fork：`git push -u origin <branch>`。
-4. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<运行 issue>`，PR 链接评论到运行 issue。
-5. PR 合并或关闭后，关闭运行 issue 时 `close` 会自动清理对应的 worktree 和本地分支（规则见"关闭前先总结"）；也可以单独运行 `node scripts/cli.ts cleanup <运行 issue>`。不要手动 `branch -D`，除非确认分支上没有没推上去的工作。
+4. 核对改动文件：`git diff --name-only upstream/main...HEAD` 列出的每个文件都是交付物；过程记录移到运行 issue 后从分支删除。
+5. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<运行 issue>`，PR 链接评论到运行 issue。
+6. PR 合并或关闭后，关闭运行 issue 时 `close` 会自动清理对应的 worktree 和本地分支（规则见"关闭前先总结"）；也可以单独运行 `node scripts/cli.ts cleanup <运行 issue>`。不要手动 `branch -D`，除非确认分支上没有没推上去的工作。
 
 不在 `ora-space/<repo>` 的主目录里开发：它只停在 main，作为 worktree 的母库。
 
