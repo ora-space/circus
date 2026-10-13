@@ -137,7 +137,7 @@ circus/
 
 1. 建 worktree：`node scripts/cli.ts worktree <repo> <branch>`。`ora-space/<repo>` 不存在时先 fork 并 clone；然后拉取 upstream 最新的 main，顺手把 fork 的 main 推到最新，再基于 `upstream/main` 建分支和 worktree。
 2. 在 worktree 里开发、commit，阶段性成果及时 push 到 fork：`git push -u origin <branch>`。
-3. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<n>`，PR 链接评论到 circus issue（或运行 issue）。
+3. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<n>`，PR 链接评论到同一个 issue。在运行 issue 里做的，`<n>` 写运行 issue 的编号，不写 parent：关联 PR 合并后 `brief` 提醒、`close` 清理分支，都按运行 issue 找 PR。
 4. PR 合并或关闭后，关闭 issue 时 `close` 会自动清理对应的 worktree 和本地分支（规则见"关闭前先总结"）；也可以单独运行 `node scripts/cli.ts cleanup <issue>`。不要手动 `branch -D`，除非确认分支上没有没推上去的工作。
 
 不在 `ora-space/<repo>` 的主目录里开发：它只停在 main，作为 worktree 的母库。
