@@ -110,6 +110,8 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 owner 没有另外指明时，按下面的方式工作。
 
+**运行 issue**：产品仓库的每个 PR 都关联一个运行 issue，不直接关联普通 issue，自己负责的 issue 也一样。开发前先 `node scripts/cli.ts run N` 开运行 issue（第 4 条）；分支、`Refs`、PR 链接都用运行 issue 的编号。这样关联 PR 合并后 `brief` 提醒、关闭运行 issue 时 `close` 清理分支，都能找到这个 PR。
+
 **目录**：产品仓库的 fork clone 放在 circus 目录下的 `ora-space/<repo>`（已在 `.gitignore` 里），origin 是自己的 fork，upstream 是 `ora-space/<repo>`。每项开发一个 worktree，放在 `ora-space/<repo>/.worktrees/` 下；这个目录写进 clone 的 `.git/info/exclude`，不改产品仓库的 `.gitignore`。
 
 ```text
@@ -125,9 +127,9 @@ circus/
 
 | 什么 | 规则 | 例子 |
 |---|---|---|
-| 分支 | `<type>/<issue>-<slug>`；没有对应 issue 时 `<type>/<slug>` | `fix/42-startup-crash` |
+| 分支 | `<type>/<issue>-<slug>` | `fix/42-startup-crash` |
 | type | 和 commit 类型一致：feat、fix、refactor、perf、docs、test、chore、build、ci | |
-| issue | circus issue 编号；在运行 issue 里做的写运行 issue 的编号，和 PR 的 `Refs` 一致 | `42` |
+| issue | 运行 issue 的编号，不是 parent | `42` |
 | slug | 小写英文、数字，用 `-` 连接，2–5 个词，说清楚做什么 | `startup-crash` |
 | worktree 目录 | 分支名去掉 `<type>/` | `.worktrees/42-startup-crash` |
 
@@ -135,10 +137,11 @@ circus/
 
 **步骤**：
 
-1. 建 worktree：`node scripts/cli.ts worktree <repo> <branch>`。`ora-space/<repo>` 不存在时先 fork 并 clone；然后拉取 upstream 最新的 main，顺手把 fork 的 main 推到最新，再基于 `upstream/main` 建分支和 worktree。
-2. 在 worktree 里开发、commit，阶段性成果及时 push 到 fork：`git push -u origin <branch>`。
-3. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<n>`，PR 链接评论到同一个 issue。在运行 issue 里做的，`<n>` 写运行 issue 的编号，不写 parent：关联 PR 合并后 `brief` 提醒、`close` 清理分支，都按运行 issue 找 PR。
-4. PR 合并或关闭后，关闭 issue 时 `close` 会自动清理对应的 worktree 和本地分支（规则见"关闭前先总结"）；也可以单独运行 `node scripts/cli.ts cleanup <issue>`。不要手动 `branch -D`，除非确认分支上没有没推上去的工作。
+1. 开运行 issue：`node scripts/cli.ts run N`。
+2. 建 worktree：`node scripts/cli.ts worktree <repo> <branch>`。`ora-space/<repo>` 不存在时先 fork 并 clone；然后拉取 upstream 最新的 main，顺手把 fork 的 main 推到最新，再基于 `upstream/main` 建分支和 worktree。
+3. 在 worktree 里开发、commit，阶段性成果及时 push 到 fork：`git push -u origin <branch>`。
+4. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<运行 issue>`，PR 链接评论到运行 issue。
+5. PR 合并或关闭后，关闭运行 issue 时 `close` 会自动清理对应的 worktree 和本地分支（规则见"关闭前先总结"）；也可以单独运行 `node scripts/cli.ts cleanup <运行 issue>`。不要手动 `branch -D`，除非确认分支上没有没推上去的工作。
 
 不在 `ora-space/<repo>` 的主目录里开发：它只停在 main，作为 worktree 的母库。
 
