@@ -6,6 +6,9 @@ export interface Pull { key: string; sha: string; state: 'open' | 'merged' | 'cl
 export interface Snapshot {
   number: number; title: string; url: string; author: string; open: boolean; status: Status; assignees: string[];
   parent: number | null; parentOpen: boolean; blockers: number[]; runs: Run[]; lgtm: boolean; prs: Pull[];
+  handoffId?: string; // Local request generation, including requests whose notification switch is off.
+  prsKnown?: boolean;
+  reviewVersion?: string; // Version at the last explicit review request, not the last polling snapshot.
 }
 export interface Cause {
   id: string; actor: string; kind: 'opened' | 'command' | 'closed' | 'reopened' | 'sync' | 'pr';
@@ -15,7 +18,7 @@ export interface Cause {
 }
 export interface Candidate {
   key: string; issue: number; recipient: string; reason: string; actor: string; source: string; url: string; title: string;
-  guard: { kind: string; value?: string; target?: number };
+  guard: { kind: string; value?: string; target?: number; handoffId?: string; revision?: string };
 }
 export const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const canonical = (xs: string[]) => [...new Set(xs.map(x => x.toLowerCase()))];
@@ -25,7 +28,7 @@ const executors = (s: Snapshot) => {
   const runs = active(s).map(r => r.author);
   return runs.length ? runs : s.parent !== null ? [s.author] : s.assignees.length ? s.assignees : [s.author];
 };
-const revisions = (s: Snapshot) => hash(s.prs.map(p => [p.key, p.sha]).sort());
+export const revisions = (s: Snapshot) => hash(s.prs.map(p => [p.key, p.sha]).sort());
 export function candidates(before: Snapshot | undefined, after: Snapshot, cause: Cause, config: NotificationConfig): Candidate[] {
   if (!config.enabled || !cause.actor || cause.actor.endsWith('[bot]')) return [];
   const out: Candidate[] = [];
@@ -46,7 +49,8 @@ export function candidates(before: Snapshot | undefined, after: Snapshot, cause:
       ? [...config.ownerRecipients, ...reviewers(after)] : config.ownerRecipients;
     const reason = after.status === 'needs-author' ? '请跟进已回复的结论或修改要求'
       : after.status === 'in-review' ? '请审查当前交付（是否合并仍由 owner 决定）' : '请回复、决策或授权';
-    add(key, users, reason, { kind: 'status', value: `${after.status}:${revisions(after)}` });
+    add(key, users, reason, { kind: 'status', value: after.status, handoffId: after.handoffId,
+      ...(after.status === 'in-review' && after.prsKnown !== false ? { revision: revisions(after) } : {}) });
   };
   if (!before) {
     if (cause.kind === 'opened' && after.open && (after.parent === null || after.parentOpen)) handoff(`initialStatus.${after.status}`);
@@ -67,7 +71,7 @@ export function candidates(before: Snapshot | undefined, after: Snapshot, cause:
     if (before.status !== after.status && !['closed', 'reopened'].includes(cause.kind)) {
       handoff(`statusTransitions.${before.status}->${after.status}`);
     } else if (before.status === after.status && (cause.issue === undefined || cause.issue === after.number) && cause.requests?.includes(`status:${after.status}`)) {
-      handoff(after.status === 'in-review' ? revisions(before) !== revisions(after)
+      handoff(after.status === 'in-review' ? before.prsKnown !== false && after.prsKnown !== false && (before.reviewVersion ?? revisions(before)) !== revisions(after)
         ? 'review_requested_for_new_revision' : 'review_requested_again_same_revision'
         : after.status === 'needs-owner' ? 'owner_request_updated' : 'author_request_updated');
     }
@@ -90,7 +94,7 @@ export function candidates(before: Snapshot | undefined, after: Snapshot, cause:
     if (before.lgtm && !after.lgtm && before.status === after.status && !cause.requests?.includes('status:in-review')) {
       add('lgtm_withdrawn', config.ownerRecipients, '旧审查认可已撤回，请勿依据旧认可合并', { kind: 'no-lgtm' });
     }
-    if (before.lgtm && revisions(before) !== revisions(after)) {
+    if (before.lgtm && before.prsKnown !== false && after.prsKnown !== false && revisions(before) !== revisions(after)) {
       add('lgtm_invalidated_by_revision', config.ownerRecipients, '交付版本已变化，旧审查认可不再适用', { kind: 'revision', value: revisions(after) });
     }
   }
@@ -114,16 +118,7 @@ export function candidates(before: Snapshot | undefined, after: Snapshot, cause:
   if (!active(before).length && active(after).length && cause.kind === 'reopened') {
     add('parent_summary_invalidated_by_run_reopen', [after.author], '运行已重新打开，先前的收尾判断已失效', { kind: 'runs-open' });
   }
-  for (const pr of after.prs) {
-    const old = before.prs.find(p => p.key === pr.key);
-    if (old?.state === 'open' && pr.state === 'merged') add('pr_merged', [after.author],
-      `PR ${pr.key} 已合并，请检查剩余交付并总结；不代表全部完成`, { kind: 'pr', value: `${pr.key}:merged` });
-    if (old?.state === 'open' && pr.state === 'closed' && before.status === 'in-review') add('review_pr_closed_without_merge',
-      [after.author, ...config.ownerRecipients, ...reviewers(after)], `PR ${pr.key} 未合并即关闭，请处理并撤回失效审查`, { kind: 'pr', value: `${pr.key}:closed` });
-  }
-  if (before.status === 'in-review') for (const pr of before.prs.filter(p => p.state === 'open' && !after.prs.some(q => q.key === p.key))) {
-    add('review_pr_reference_removed', [...config.ownerRecipients, ...reviewers(before)], `PR ${pr.key} 的待审引用已撤回`, { kind: 'pr-removed', value: pr.key });
-  }
+  // PR state itself never routes a notification. Humans express new work with issue status/assign.
   return out;
 }
 
@@ -131,8 +126,11 @@ export function stillValid(c: Candidate, s: Snapshot): boolean {
   if (!s.open) return false;
   if (s.parent !== null && !s.parentOpen) return c.guard.kind === 'closed-parent';
   switch (c.guard.kind) {
-    case 'status': return c.guard.value === `${s.status}:${revisions(s)}`;
-    case 'status-reviewer': return c.guard.value === `${s.status}:${revisions(s)}` && s.assignees.map(u=>u.toLowerCase()).includes(c.recipient);
+    case 'status':
+    case 'status-reviewer': return c.guard.value === s.status
+      && (!c.guard.handoffId || c.guard.handoffId === s.handoffId)
+      && (!c.guard.revision || c.guard.revision === revisions(s))
+      && (c.guard.kind !== 'status-reviewer' || s.assignees.map(u=>u.toLowerCase()).includes(c.recipient));
     case 'assigned': return s.assignees.map(u => u.toLowerCase()).includes(c.recipient);
     case 'reviewer': return s.status === 'in-review' && s.assignees.map(u => u.toLowerCase()).includes(c.recipient);
     case 'removed': return !s.assignees.map(u => u.toLowerCase()).includes(c.guard.value!);

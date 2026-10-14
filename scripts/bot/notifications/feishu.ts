@@ -1,6 +1,7 @@
 export interface Recipient { mobile?: string; open_id?: string }
 export type Recipients = Record<string, Recipient>;
 export interface Sender {
+  hasRecipient?(login: string): boolean;
   identity(login: string): Promise<string>;
   send(identity: string, text: string, id: string): Promise<void>;
 }
@@ -14,7 +15,7 @@ export function parseRecipients(raw: unknown): Recipients {
     if (r.mobile !== undefined && (typeof r.mobile !== 'string' || !/^\+?[\d -]{5,20}$/.test(r.mobile))) throw new Error('人员映射手机号格式错误');
     if (r.open_id !== undefined && (typeof r.open_id !== 'string' || !/^ou_[\w]+$/.test(r.open_id))) throw new Error('人员映射 open_id 格式错误');
     if (result[login.toLowerCase()]) throw new Error('人员映射包含重复 GitHub 账号');
-    result[login.toLowerCase()] = r;
+    result[login.toLowerCase()] = r.mobile ? { mobile: r.mobile.replace(/[\s-]/g,'') } : { open_id: r.open_id };
   }
   return result;
 }
@@ -44,7 +45,7 @@ export function feishuApp(
     try { result = await response.json(); } catch { throw new DeliveryError(stage, `HTTP ${response.status}/invalid-json`, true); }
     if (!response.ok || result.code !== 0) {
       // Never include server msg, raw bodies, URLs, credentials, mobile or token in errors/logs.
-      const code = result.code ?? response.status;
+      const code = typeof result.code === 'number' ? result.code : response.status;
       throw new DeliveryError(stage, code, response.status >= 500 || response.status === 429 || [99991400, 99991401, 99991402, 11232, 11247].includes(code));
     }
     return result;
@@ -57,6 +58,7 @@ export function feishuApp(
     return token;
   }
   return {
+    hasRecipient: login => !!recipients[login.toLowerCase()],
     async identity(login) {
       const key = login.toLowerCase();
       if (identities.has(key)) return identities.get(key)!;

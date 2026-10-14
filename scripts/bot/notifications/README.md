@@ -7,11 +7,11 @@
 | 字段 | 默认 | 含义 |
 |---|---|---|
 | `enabled` | false | 总开关 |
-| `transport` | feishu-webhook | 配置保留原默认值；已实现 feishu-app 应用私聊，启用时须选择已实现渠道 |
+| `transport` | feishu-app | 应用私聊；不实现群 webhook |
 | `ownerRecipients` | [] | 接收决策/审查通知的 owner GitHub login，不授予权限 |
 | `initialStatus` | 见下表 | 创建时初始交接，独立于后续转移 |
 | `statusTransitions` | 见矩阵 | open issue 具体前后状态 |
-| `events` | 见事件表 | 状态值变化以外的具体业务事件 |
+| `events` | 见事件表 | 25 个协作事件；3 个 PR 状态旧字段保留但停用 |
 
 将单项改为 false 即关闭，缺项也关闭；不提供通配符和旧8类聚合开关。读取器须拒绝未知字段/事件/状态对、错误类型和未支持渠道；启用时验证 owner 名单、凭据及映射。设置经 PR 修改。
 
@@ -75,9 +75,11 @@
 | `run_reopened_with_closed_parent` | 开 | run作者 | parent closed，run重开需收尾 |
 | `last_run_closed` | 开 | parent作者 | 最后run结束；parent open、无阻塞且无其他交接，可汇总 |
 | `parent_closed_with_open_runs` | 开 | 未结束run作者 | parent合法关闭，运行需收尾 |
-| `pr_merged` | 开 | 关联issue作者 | PR合并，检查剩余交付并总结；部分合并非全部完成 |
-| `review_pr_closed_without_merge` | 开 | 有处理动作的作者及有效审查人 | 待审PR未合并关闭，处理并撤回失效审查请求 |
-| `review_pr_reference_removed` | 开 | 有效审查人 | 撤回已通知的待审PR引用，原任务失效 |
+| `pr_merged` | 关（停用） | — | 合并人通过 issue 标签交接，不直接监听 PR 合并通知 |
+| `review_pr_closed_without_merge` | 关（停用） | — | 有新处理动作时通过 issue 标签表达 |
+| `review_pr_reference_removed` | 关（停用） | — | 有新处理动作时通过 issue 标签表达 |
+
+这三个旧 PR 字段只允许 `false` 或省略，设 `true` 会报错，避免误以为开启后就有对应通知。PR/head 快照仅作为审查请求的版本证据，不因合并、关闭或编辑 PR 而直接发消息。合并后需要作者动作时，由合并人在关联 issue `/label status:needs-author`。
 
 新版本请求、同版本新一轮请求与重放须用来源、请求标识、PR/head SHA区分，普通评论或重复命令不构成新请求。无法确认版本时不能丢弃合法明确的重新审查请求，须暴露判定限制。
 
@@ -92,7 +94,7 @@ run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控�
 1. 按合法成功命令及最终有效状态判断，不通知同评论中间切换。assign后unassign或移除再补回且无新动作静默；部分成功须保存可补偿结果。
 2. 固定排除源业务操作者本人，bot代执行追溯到人，跨issue一样；账号与实际飞书接收身份双层去重。
 3. 同人、同源、同目标issue合成一条；新增指派+进入待审只发一次审查邀请，但每个候选先分别应用开关。
-4. 发送前复核，丢弃已处理/撤回待办。lgtm因转needs-author、重新请求in-review或合法关闭被清理，不算明确撤销。
+4. 发送前复核，丢弃已处理/撤回/被新请求替代的待办。每次有效交接保留请求代次，即使新通知开关关闭或操作者就是收件人，也会使旧请求过时。lgtm因转needs-author、重新请求in-review或合法关闭被清理，不算明确撤销。
 5. 主动重开仅恢复实际动作，不广播历史参与者。parent closed的run只收尾，不暗自重开parent。
 6. 执行人员包含active run作者，没人承接时事项作者兜底；不向全部assignee泛通知，不要求停止不受影响工作。
 7. 消息只含标题、原因、下一步动作、GitHub链接；评论中新任务通过status/assign明确交接，不猜测所有自然语言请求。
@@ -101,10 +103,10 @@ run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控�
 
 保留生命周期、交接、作者/assignee、parent/运行集合及作者、未完成依赖集合、审查请求/证据及各PR状态。看板Done > status > Blocked > Running > Open只是投影，不能盖掉执行影响。依赖目标包括run，关闭/reopen也须处理直接依赖者。
 
-持久保存来源、版本、有效待办和送达结果；补偿仅补缺失有效动作，不绕过关闭设置或全量广播。初始化建立基线，历史回补由owner确认。产品PR、原生依赖、可信自动化结果须可靠来源或持久基线补偿；抑制自身label/comment回声。
+持久保存来源、请求代次、最后明确请求的审查版本、有效待办和送达结果；补偿仅补缺失有效动作，不绕过关闭设置或全量广播。初始化建立基线，历史回补由owner确认。原生依赖、可信自动化结果须可靠来源或持久基线补偿；抑制自身label/comment回声。PR 交付后的通知复用正常 issue 标签交接。
 
-群webhook使用Actions secrets FEISHU_WEBHOOK_URL、FEISHU_SIGNING_SECRET、FEISHU_RECIPIENTS_JSON（GitHub login→飞书ID，注明类型）；login忽略大小写，外部群使用有效open_id。未绑定即未送达，暴露失败并支持补发，不退化成@all。应用私聊须实现相应发送器、权限/范围和token管理。
+应用私聊使用本地文件或后续 Actions secrets FEISHU_APP_ID、FEISHU_APP_SECRET、FEISHU_RECIPIENTS_JSON（GitHub login→手机号或当前应用 open_id）；login忽略大小写。未绑定即未送达，暴露失败并支持补发，不退化群广播。已绑定操作者的身份查询失败时保留待发，不绕过同一飞书身份的自通知过滤。
 
-通知失败不撤销业务写入，补发不重跑业务；看板失败不能丢通知。协调并发更新和共享webhook限速，凭据脱敏，检查HTTP及业务返回码。超时可能已发送成功，webhook不能保证严格一次送达；持久记录用于尽力去重、定位失败与补发。
+通知失败不撤销业务写入，补发不重跑业务；看板失败不能丢通知。协调并发更新，凭据脱敏，检查HTTP及业务返回码。发送成功与本地记账间仍有崩溃窗口；持久记录和消息 UUID 用于尽力去重、定位失败与补发。
 
-发送规范见[自定义机器人指南](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot)和[应用消息API](https://open.feishu.cn/document/server-docs/im-v1/message/create)。
+发送规范见[应用消息API](https://open.feishu.cn/document/server-docs/im-v1/message/create)。

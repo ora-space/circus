@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseConfig, STATUSES, EVENTS, type NotificationConfig } from './config.ts';
+import { parseConfig, STATUSES, EVENTS, PR_STATE_EVENTS, type NotificationConfig } from './config.ts';
 import { candidates, stillValid, type Snapshot, type Cause } from './rules.ts';
 import { emptyState, enqueue, flush, fileStore, type StateStore } from './store.ts';
 import { feishuApp, parseRecipients } from './feishu.ts';
-import { observeHandle } from './observe.ts';
+import { observeHandle, snapshot } from './observe.ts';
 
 import { config, state, fixture } from './testing.ts';
 const cause = (fields: Partial<Cause> = {}): Cause => ({ id:'comment:1', actor:'bob', kind:'command', ...fields });
@@ -82,7 +82,7 @@ test('blocker reopen prompts active workers; last run close prompts parent, clos
   const run=state({parent:10,author:'worker',status:'in-review'});
   assert.deepEqual(candidates(run,{...run,parentOpen:false},cause({kind:'closed'}),config()).map(c=>c.key),['parent_closed_with_open_runs']);
 });
-test('lgtm cleanup on a new request is not withdrawal; PR partial merge no overall-complete claim',()=>{
+test('lgtm cleanup on a new request is not withdrawal; PR state itself never sends',()=>{
   const s=state({status:'in-review',lgtm:true});
   const next={...s,lgtm:false};
   assert.equal(candidates(s,next,cause(),config())[0].key,'lgtm_withdrawn');
@@ -90,7 +90,7 @@ test('lgtm cleanup on a new request is not withdrawal; PR partial merge no overa
   const a={key:'ora-space/cloud#1',sha:'abc123',state:'open' as const,url:'https://github.com/ora-space/cloud/pull/1'};
   const b={...a,key:'ora-space/cloud#2'};
   const merged=candidates({...s,prs:[a,b]},{...s,prs:[{...a,state:'merged'},b]},cause({kind:'pr'}),config());
-  assert.equal(merged.length,1);assert.match(merged[0].reason,/不代表全部完成/);
+  assert.equal(merged.length,0);
 });
 test('persisted queue: failures retry without business, replay dedup, stale requests expire',async()=>{
   const store=memory(); const before=state(); let after=state({status:'needs-author'});
@@ -187,12 +187,96 @@ test('stored review version distinguishes a new head discovered before a same-st
   assert.equal(store.state.records[0].candidates[0].key,'review_requested_for_new_revision');
 });
 
-test('all 28 concrete events can be independently disabled',()=>{
+test('supported concrete events can be independently disabled; retired PR state fields reject true',()=>{
   const c=config();
   for(const key of EVENTS) {
     const changed=structuredClone(c);changed.events[key]=false;
     const parsed=parseConfig(changed);
     assert.equal(parsed.events[key],false);
-    for(const other of EVENTS.filter(k=>k!==key))assert.equal(parsed.events[other],true);
+    for(const other of EVENTS.filter(k=>k!==key))assert.equal(parsed.events[other],c.events[other]);
+  }
+  for(const key of PR_STATE_EVENTS)assert.throws(()=>parseConfig({...c,events:{...c.events,[key]:true}}));
+});
+
+test('new author request supersedes old pending request, including failed send and disabled new notification',async()=>{
+  for(const disable of [false,true]) {
+    const f=fixture(); const s=memory();const c=config();let sent=0;
+    observeHandle(event(f,'/label status:needs-author','owner',100),f.gh,'ora-space/circus',s,c);
+    await flush(s,c,{identity:async(u)=>u,send:async()=>{throw new Error('offline');}},()=>snapshot(f.gh,'ora-space/circus',1),()=>{});
+    if(disable)c.events.author_request_updated=false;
+    observeHandle(event(f,'/label status:needs-author','owner',101),f.gh,'ora-space/circus',s,c);
+    const result=await flush(s,c,{identity:async(u)=>u,send:async()=>{sent++;}},()=>snapshot(f.gh,'ora-space/circus',1),()=>{});
+    assert.equal(sent,disable?0:1);assert.equal(result.obsolete,1);
+    assert.equal(s.state.records[0].state,'obsolete');
+    observeHandle(event(f,'/label status:needs-author','owner',101),f.gh,'ora-space/circus',s,c);
+    assert.equal((await flush(s,c,{identity:async(u)=>u,send:async()=>{sent++;}},()=>snapshot(f.gh,'ora-space/circus',1),()=>{})).sent,0);
+  }
+});
+test('A -> none -> A never resurrects the first request; unrelated PR revision does not discard author action',async()=>{
+  const s=memory(),c=config();const a=state({status:'needs-author'});let sent=0;
+  enqueue(s,[state()],[a],cause({id:'old'}),c);
+  enqueue(s,[a],[state()],cause({id:'finished'}),c);
+  enqueue(s,[state()],[a],cause({id:'new'}),c);
+  const current={...a,prs:[{key:'ora-space/cloud#1',sha:'new123',state:'open' as const,url:'https://github.com/ora-space/cloud/pull/1'}]};
+  const result=await flush(s,c,{identity:async(u)=>u,send:async()=>{sent++;}},()=>current,()=>{});
+  assert.equal(sent,1);assert.equal(result.obsolete,1);
+});
+test('actor alias resolution errors retain pending instead of bypassing self-notification filter',async()=>{
+  const s=memory(),c=config(),a=state({status:'needs-author'});enqueue(s,[state()],[a],cause(),c);
+  let sends=0;
+  const result=await flush(s,c,{hasRecipient:()=>true,identity:async(u)=>{if(u==='bob')throw new Error('lookup unavailable');return 'same-person';},send:async()=>{sends++;}},()=>a,()=>{});
+  assert.equal(result.failed,1);assert.equal(sends,0);assert.equal(s.state.records[0].state,'pending');
+  await flush(s,c,{hasRecipient:()=>true,identity:async()=> 'same-person',send:async()=>{sends++;}},()=>a,()=>{});
+  assert.equal(sends,0);assert.equal(s.state.records[0].state,'obsolete');
+});
+test('author handoff survives unavailable PR metadata; existing review retry waits for verified version',async()=>{
+  const f=fixture({labels:[{name:'status:in-review'}]});const s=memory(),c=config();
+  observeHandle(event(f,'/label status:needs-author'),f.gh,'ora-space/circus',s,c,undefined,()=>{throw new Error('no access');});
+  assert.equal(s.state.records.length,1);
+  const review=memory(),r=state({status:'in-review'});enqueue(review,[state()],[r],cause(),c);
+  const result=await flush(review,c,{identity:async(u)=>u,send:async()=>{throw new Error('must not send');}},()=>({...r,prsKnown:false}),()=>{});
+  assert.equal(result.failed,1);assert.equal(review.state.records[0].state,'pending');
+});
+test('version-1 state migration keeps sent history and only retries latest pending author request',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'circus-migration-')),path=join(dir,'state.json');
+  try {
+    const s=memory(),c=config(),a=state({status:'needs-author'});
+    enqueue(s,[state()],[a],cause({id:'old'}),c);enqueue(s,[a],[a],cause({id:'new',requests:['status:needs-author']}),c);
+    const raw:any=structuredClone(s.state);raw.version=1;delete raw.snapshots[1].handoffId;
+    for(const record of raw.records)for(const candidate of record.candidates){delete candidate.guard.handoffId;candidate.guard.value+=':legacyhash';}
+    writeFileSync(path,JSON.stringify(raw));const reopened=fileStore(path);
+    try {let sends=0;const result=await flush(reopened,c,{identity:async(u)=>u,send:async()=>{sends++;}},()=>a,()=>{});
+      assert.equal(reopened.state.version,2);assert.equal(sends,1);assert.equal(result.obsolete,1);
+    } finally {reopened.close();}
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a changed owner routing list and disabled switch are rechecked before send even when PR lookup is unavailable',async()=>{
+  const c=config(),s=memory(),o=state({status:'needs-owner'});
+  enqueue(s,[state()],[o],cause(),c);c.ownerRecipients=[];
+  const result=await flush(s,c,{identity:async(u)=>u,send:async()=>{throw new Error('must not send');}},()=>o,()=>{});
+  assert.equal(result.obsolete,1);assert.equal(result.failed,0);
+  const r=memory(),cfg=config(),review=state({status:'in-review'});enqueue(r,[state()],[review],cause(),cfg);
+  cfg.statusTransitions['none->in-review']=false;
+  const off=await flush(r,cfg,{identity:async(u)=>u,send:async()=>{throw new Error('must not send');}},()=>({...review,prsKnown:false}),()=>{});
+  assert.equal(off.obsolete,1);assert.equal(off.failed,0);
+});
+test('review classification retains last requested head across ordinary polling snapshots',()=>{
+  const c=config(),s=memory();
+  const pr={key:'ora-space/cloud#1',sha:'old123',state:'open' as const,url:'https://github.com/ora-space/cloud/pull/1'};
+  const old=state({status:'in-review',prs:[pr]});enqueue(s,[state()],[old],cause({id:'initial'}),c);
+  const current={...old,prs:[{...pr,sha:'new123'}]};enqueue(s,[old],[current],cause({id:'poll'}),c);
+  enqueue(s,[current],[current],cause({id:'request',requests:['status:in-review']}),c);
+  assert.equal(s.state.records.at(-1)!.candidates[0].key,'review_requested_for_new_revision');
+});
+
+test('all required author handoffs use actual handler and their own switch, including an explicit same-state request',async()=>{
+  for(const previous of ['none','needs-owner','in-review','needs-author'] as const)for(const enabled of [false,true]) {
+    const c=config(),s=memory(),f=fixture({labels:previous==='none'?[]:[{name:`status:${previous}`}]});
+    const key=previous==='needs-author'?'author_request_updated':`${previous}->needs-author`;
+    if(previous==='needs-author')c.events.author_request_updated=enabled;else c.statusTransitions[key]=enabled;
+    observeHandle(event(f,'/label status:needs-author','owner'),f.gh,'ora-space/circus',s,c);
+    let sends=0;const result=await flush(s,c,{identity:async(u)=>u,send:async()=>{sends++;}},()=>snapshot(f.gh,'ora-space/circus',1),()=>{});
+    assert.equal(sends,enabled?1:0,`${key}:${enabled}`);assert.equal(result.failed,0);
   }
 });

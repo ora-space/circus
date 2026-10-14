@@ -51,7 +51,7 @@ export const command: Command = {
           }
           const cause = changeCause(ctx.gh,gh,ctx.repo,prior,current,store.state.snapshots);
           if (!cause) {
-            const {waitingForExecution: _waiting,...previous}=prior;
+            const {waitingForExecution: _waiting,handoffId: _handoff,reviewVersion: _version,...previous}=prior;
             if(hash(previous)!==hash(current))ctx.out(`#${n} 无法确认变更操作者，保留基线待重试`);
             continue;
           }

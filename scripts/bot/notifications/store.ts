@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, openSync, closeSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { hash, stillValid, type Candidate, type Cause, type Snapshot } from './rules.ts';
+import { hash, revisions, stillValid, type Candidate, type Cause, type Snapshot } from './rules.ts';
 import type { NotificationConfig } from './config.ts';
 import { candidates } from './rules.ts';
 import type { Sender } from './feishu.ts';
@@ -8,8 +8,8 @@ import type { Sender } from './feishu.ts';
 export interface Record {
   id: string; candidates: Candidate[]; state: 'pending' | 'sent' | 'obsolete'; attempts: number; error?: string;
 }
-export interface State { version: 1; snapshots: { [n: string]: Snapshot & { waitingForExecution?: boolean } }; records: Record[]; sources: string[] }
-export const emptyState = (): State => ({ version: 1, snapshots: {}, records: [], sources: [] });
+export interface State { version: 2; snapshots: { [n: string]: Snapshot & { waitingForExecution?: boolean } }; records: Record[]; sources: string[] }
+export const emptyState = (): State => ({ version: 2, snapshots: {}, records: [], sources: [] });
 export interface StateStore { state: State; save(): void; close(): void }
 export function fileStore(path: string): StateStore {
   mkdirSync(dirname(path), { recursive: true });
@@ -17,8 +17,20 @@ export function fileStore(path: string): StateStore {
   let fd: number;
   try { fd = openSync(lock, 'wx'); } catch { throw new Error('通知状态文件已被占用；确认无进程使用后再移除 .lock'); }
   try {
-    const state: State = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : emptyState();
-    if (state.version !== 1 || !state.snapshots || !Array.isArray(state.records) || !Array.isArray(state.sources)) throw new Error('通知状态文件格式错误');
+    const raw = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : emptyState();
+    if (![1,2].includes(raw.version) || !raw.snapshots || !Array.isArray(raw.records) || !Array.isArray(raw.sources)) throw new Error('通知状态文件格式错误');
+    const state = raw as State;
+    if (raw.version === 1) {
+      state.version = 2;
+      for (const record of state.records) for (const c of record.candidates) {
+        if (!['status','status-reviewer'].includes(c.guard.kind)) continue;
+        const [status, revision] = (c.guard.value ?? '').split(':');
+        c.guard.value = status;
+        if (status === 'in-review') c.guard.revision = revision;
+        c.guard.handoffId = c.source;
+        if (state.snapshots[c.issue]?.status === status) state.snapshots[c.issue].handoffId = c.source;
+      }
+    }
     return {
       state,
       save() { writeFileSync(`${path}.new`, JSON.stringify(state, null, 2)); renameSync(`${path}.new`, path); },
@@ -33,19 +45,26 @@ export function enqueue(store: StateStore, before: Snapshot[], after: Snapshot[]
     const previous = cause.kind === 'opened' && cause.issue === s.number ? undefined
       : before.find(b => b.number === s.number) ?? store.state.snapshots[s.number];
     const historic = store.state.snapshots[s.number];
+    const newRequest = !replay && (!previous || previous.status !== s.status || previous.open !== s.open
+      || ((cause.issue === undefined || cause.issue === s.number) && cause.requests?.includes(`status:${s.status}`)));
+    const current = { ...s, handoffId: newRequest ? cause.id : historic?.handoffId,
+      reviewVersion: s.status !== 'in-review' ? undefined : newRequest
+        ? s.prsKnown === false ? undefined : revisions(s)
+        : historic?.reviewVersion ?? (historic?.status === 'in-review' && historic.prsKnown !== false ? revisions(historic) : undefined) };
     const waited = !!historic?.waitingForExecution || !!previous?.blockers.length;
-    const previousWithHistory = previous && { ...previous, waitingForExecution: waited,
-      prs: historic && previous.status === 'in-review' && s.status === 'in-review' && cause.requests?.includes('status:in-review')
-        ? historic.prs : previous.prs };
+    const priorReview = historic && previous?.status === 'in-review' && s.status === 'in-review'
+      && cause.requests?.includes('status:in-review') ? historic : previous;
+    const previousWithHistory = previous && { ...previous, waitingForExecution: waited, reviewVersion: historic?.reviewVersion,
+      prs: priorReview?.prs ?? previous.prs, prsKnown: priorReview?.prsKnown };
     if (!replay) {
-      const generated = candidates(previousWithHistory, s, cause, config).filter(c => {
+      const generated = candidates(previousWithHistory, current, cause, config).filter(c => {
         const needed = c.key === 'parent_summary_invalidated_by_run_reopen' ? 'last_run_closed'
           : c.key === 'lgtm_invalidated_by_revision' ? 'lgtm_added' : undefined;
         return !needed || store.state.records.some(r => r.state === 'sent' && r.candidates.some(p => p.issue === s.number && p.key === needed));
       });
       pending.push(...generated);
     }
-    store.state.snapshots[s.number] = { ...s, waitingForExecution: !!s.blockers.length ||
+    store.state.snapshots[s.number] = { ...current, waitingForExecution: !!s.blockers.length ||
       !!(s.status !== 'none' && waited) };
   }
   const groups = new Map<string, Candidate[]>();
@@ -74,15 +93,29 @@ export async function flush(
   const result = { sent: 0, failed: 0, obsolete: 0 };
   if (!config.enabled) return result;
   const groups = new Map<string, { identity: string; records: Record[]; candidates: Candidate[] }>();
+  const currentSnapshot = (n: number) => ({ ...refresh(n), handoffId: store.state.snapshots[n]?.handoffId });
+  const validCandidate = (c: Candidate, s: Snapshot) => {
+    if (!configured(c, config) || !s.open || (c.guard.handoffId && c.guard.handoffId !== s.handoffId)) return false;
+    if (['status','status-reviewer'].includes(c.guard.kind)) {
+      const owners = config.ownerRecipients.map(u=>u.toLowerCase());
+      const reviewer = s.parent !== null && s.author.toLowerCase() !== c.recipient && s.assignees.some(u=>u.toLowerCase()===c.recipient);
+      if (s.status === 'needs-author' && s.author.toLowerCase() !== c.recipient) return false;
+      if (s.status === 'needs-owner' && !owners.includes(c.recipient)) return false;
+      if (s.status === 'in-review' && !owners.includes(c.recipient) && !reviewer) return false;
+    }
+    if (['lgtm','no-lgtm','revision'].includes(c.guard.kind) && !config.ownerRecipients.includes(c.recipient)) return false;
+    if (c.guard.revision && s.prsKnown === false) throw new Error('无法核实待审版本，保留通知待重试');
+    return stillValid(c, s);
+  };
   for (const record of store.state.records.filter(r => r.state === 'pending')) {
     try {
-      const current = refresh(record.candidates[0].issue);
-      const valid = record.candidates.filter(c => configured(c, config) && stillValid(c, current));
+      const current = currentSnapshot(record.candidates[0].issue);
+      const valid = record.candidates.filter(c => validCandidate(c, current));
       if (!valid.length) { record.state = 'obsolete'; result.obsolete++; store.save(); continue; }
       const identity = await sender.identity(valid[0].recipient);
       // Two GitHub accounts may map to one Feishu user: exclude actor identity too.
-      let actorIdentity: string | undefined;
-      try { actorIdentity = await sender.identity(valid[0].actor); } catch { /* An unbound actor has no mapped notification identity. */ }
+      const actorIdentity = sender.hasRecipient?.(valid[0].actor) === false ? undefined
+        : await sender.identity(valid[0].actor);
       if (actorIdentity === identity) { record.state = 'obsolete'; result.obsolete++; store.save(); continue; }
       const key = `${current.number}:${identity}:${valid[0].source}`;
       const group = groups.get(key) ?? { identity, records: [], candidates: [] };
@@ -95,20 +128,23 @@ export async function flush(
   for (const group of groups.values()) {
     try {
       // A prior network lookup could take time; recheck immediately before sending.
-      const s = refresh(group.candidates[0].issue);
-      const valid = group.candidates.filter(c => stillValid(c, s));
+      const s = currentSnapshot(group.candidates[0].issue);
+      const valid = group.candidates.filter(c => validCandidate(c, s));
+      const deliverable = group.records.filter(r => {
+        if (r.candidates.some(c => valid.includes(c))) return true;
+        r.state = 'obsolete'; result.obsolete++; return false;
+      });
       if (!valid.length) {
-        for (const r of group.records) r.state = 'obsolete';
-        result.obsolete += group.records.length; store.save(); continue;
+        store.save(); continue;
       }
       const reasons = [...new Set(valid.map(c => c.reason))];
       const review = reasons.some(r => r.includes('请审查'));
       const selected = review ? reasons.filter(r => !r.startsWith('请参与')) : reasons;
       const text = `circus #${s.number}：${s.title.slice(0, 200)}\n${selected.join('\n')}\n${valid[0].url}`;
-      for (const r of group.records) { r.attempts++; delete r.error; }
+      for (const r of deliverable) { r.attempts++; delete r.error; }
       store.save();
-      await sender.send(group.identity, text, hash(group.records.map(r => r.id).sort()));
-      for (const r of group.records) r.state = 'sent';
+      await sender.send(group.identity, text, hash(deliverable.map(r => r.id).sort()));
+      for (const r of deliverable) r.state = 'sent';
       result.sent++; store.save(); report(`通知 #${s.number} 已发送`);
     } catch (e) {
       for (const r of group.records) r.error = e instanceof Error ? e.message : '通知发送失败';
