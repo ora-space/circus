@@ -24,6 +24,8 @@ export interface Event {
   payload: any;
 }
 
+export interface Effects { acceptedLabel(n: number, label: string): void }
+
 // Labels passed at creation arrive as separate `labeled` events right after `opened`;
 // body labels seen in that window are the opener's, not a manual edit.
 const OPENING_MS = 60_000;
@@ -83,8 +85,9 @@ function reviewRule(label: string, actor: string, issue: Issue, labels: string[]
   return null;
 }
 
-function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashCommand[], comment: string): string[] {
+function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashCommand[], comment: string, effects?: Effects): string[] {
   const errors: string[] = [];
+  const accepted: string[] = [];
   let writer: boolean | undefined;
   const isWriter = () => (writer ??= ['admin', 'write'].includes(gh.permission(actor)));
   // Labels are applied in command order, so review rules see the labels set before them.
@@ -115,6 +118,7 @@ function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashC
           continue;
         }
         labels = applyLabels(labels, [l], []);
+        accepted.push(l);
         // A new revision to review, or changes requested: an earlier lgtm no longer holds.
         if (l === IN_REVIEW || l === NEEDS_AUTHOR) labels = labels.filter((x) => x !== LGTM);
       }
@@ -138,6 +142,7 @@ function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashC
     }
   }
   if (labels.join('\n') !== current.join('\n')) gh.setLabels(issue.number, labels);
+  for (const label of accepted.filter(l => labels.includes(l))) effects?.acceptedLabel(issue.number, label);
   return errors;
 }
 
@@ -254,18 +259,18 @@ function remindAuthors(gh: GitHub, payload: any): void {
   }
 }
 
-export function handle(event: Event, gh: GitHub, board?: Board): void {
+export function handle(event: Event, gh: GitHub, board?: Board, effects?: Effects): void {
   if (event.name === 'pull_request_target') return remindAuthors(gh, event.payload);
   if (RESYNC_EVENTS.includes(event.name)) {
     if (board) for (const item of gh.listOpenIssues()) syncBoard(gh, board, item);
     return;
   }
-  const touched = dispatch(event, gh);
+  const touched = dispatch(event, gh, effects);
   if (board) for (const n of new Set(touched)) syncBoard(gh, board, gh.getIssue(n));
 }
 
 // Applies the event and returns the issues whose board entry may have changed.
-function dispatch(event: Event, gh: GitHub): number[] {
+function dispatch(event: Event, gh: GitHub, effects?: Effects): number[] {
   const { action, issue, sender } = event.payload;
   if (!issue || issue.pull_request || sender?.type === 'Bot') return [];
   const n: number = issue.number;
@@ -339,7 +344,7 @@ function dispatch(event: Event, gh: GitHub): number[] {
         if (parent === null) return [n, ...notifyDependents(gh, issue)];
         const { summary } = splitSummary(issue.body);
         gh.comment(parent, `运行 #${n}（@${issue.user.login}）已结束：**${issue.title}**\n\n${summary}`);
-        return [parent];
+        return [parent, ...notifyDependents(gh, issue)];
       }
       gh.reopen(n);
       gh.comment(
@@ -351,13 +356,13 @@ function dispatch(event: Event, gh: GitHub): number[] {
     }
     case 'issues.reopened': {
       const parent = parentOf(issue.body);
-      if (parent !== null) return [parent];
+      if (parent !== null) return [parent, ...gh.blocking(n).filter((i) => i.state === 'open').map((i) => i.number)];
       return [n, ...gh.blocking(n).filter((i) => i.state === 'open').map((i) => i.number)];
     }
     case 'issue_comment.created': {
       const commands = parseSlash(event.payload.comment.body);
       if (!commands.length) return [];
-      const errors = applyCommands(gh, gh.getIssue(n), sender.login, commands, event.payload.comment.body);
+      const errors = applyCommands(gh, gh.getIssue(n), sender.login, commands, event.payload.comment.body, effects);
       if (errors.length) gh.comment(n, [`${who} 以下命令有问题，其余已执行：`, ...errors.map((e) => `- ${e}`)].join('\n'));
       else gh.react(event.payload.comment.id, '+1');
       return [n];
