@@ -19,6 +19,12 @@ on:
 permissions:
   contents: read
 
+# Serialize protocol mutations; retain pending runs instead of replacing older comments.
+concurrency:
+  group: circus-bot
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   bot:
     runs-on: ubuntu-latest
@@ -36,3 +42,7 @@ jobs:
       - run: node scripts/cli.ts bot
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          CIRCUS_NOTIFICATIONS_ENABLED: ${{ vars.CIRCUS_NOTIFICATIONS_ENABLED }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_RECIPIENTS_JSON: ${{ secrets.FEISHU_RECIPIENTS_JSON }}
