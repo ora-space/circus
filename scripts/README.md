@@ -225,6 +225,7 @@ circus/
 | `memory` | 记忆索引 |
 | `setup` | owner 用：按登记表创建 label |
 | `bot` | 只在 GitHub Action 里运行 |
+| `notify` | 本地只读观察指定 issue 状态并发送应用私聊；显式加载本地配置与凭据，首次建基线，不回补历史。见 [`notify/README.md`](notify/README.md) |
 
 ## 看板
 
