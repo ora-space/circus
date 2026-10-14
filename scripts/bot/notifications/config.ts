@@ -10,6 +10,7 @@ export const EVENTS = [
   'review_pr_closed_without_merge', 'review_pr_reference_removed',
 ] as const;
 export type EventKey = typeof EVENTS[number];
+export const PR_STATE_EVENTS: EventKey[] = ['pr_merged', 'review_pr_closed_without_merge', 'review_pr_reference_removed'];
 export interface NotificationConfig {
   enabled: boolean;
   transport: 'feishu-app' | 'feishu-webhook';
@@ -40,10 +41,12 @@ export function parseConfig(value: unknown): NotificationConfig {
   for (const a of STATUSES) for (const b of STATUSES) {
     if ((a === b || b === 'none') && transitions[`${a}->${b}`]) throw new Error(`statusTransitions.${a}->${b}: 固定静默`);
   }
+  const events = switches(value.events, [...EVENTS], 'events');
+  if (PR_STATE_EVENTS.some(key => events[key])) throw new Error('PR 状态通知已停用；请通过 issue 标签交接（这些旧字段仅允许 false 或省略）');
   return {
     enabled: value.enabled, transport: value.transport as NotificationConfig['transport'],
     ownerRecipients: [...new Set(value.ownerRecipients.map(x => x.toLowerCase()))],
     initialStatus: switches(value.initialStatus, STATUSES.filter(s => s !== 'none'), 'initialStatus'),
-    statusTransitions: transitions, events: switches(value.events, [...EVENTS], 'events'),
+    statusTransitions: transitions, events,
   };
 }

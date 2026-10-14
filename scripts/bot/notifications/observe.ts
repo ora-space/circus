@@ -11,13 +11,19 @@ import { type Snapshot, type Cause, type Pull } from './rules.ts';
 export function snapshot(gh: GitHub, repo: string, n: number, pulls?: (n: number) => Pull[]): Snapshot {
   const issue = gh.getIssue(n);
   const parent = parentOf(issue.body);
+  const status = (issue.labels.find(l => l.name.startsWith('status:'))?.name.slice(7) ?? 'none') as Status;
+  let prs: Pull[] = [];
+  let prsKnown = true;
+  if (pulls && status === 'in-review') {
+    try { prs = pulls(n); } catch { prsKnown = false; }
+  }
   return {
     number: n, title: issue.title, url: `https://github.com/${repo}/issues/${n}`, author: issue.user.login,
-    open: issue.state === 'open', status: (issue.labels.find(l => l.name.startsWith('status:'))?.name.slice(7) ?? 'none') as Status,
+    open: issue.state === 'open', status,
     assignees: issue.assignees.map(a => a.login), parent, parentOpen: parent === null || gh.getIssue(parent).state === 'open',
     blockers: gh.blockedBy(n).filter(i => i.state === 'open').map(i => i.number).sort((a,b) => a-b),
     runs: gh.subIssues(n).filter(i => parentOf(i.body) === n).map(i => ({ number: i.number, author: i.user.login, open: i.state === 'open' })),
-    lgtm: issue.labels.some(l => l.name === 'review:lgtm'), prs: pulls?.(n) ?? [],
+    lgtm: issue.labels.some(l => l.name === 'review:lgtm'), prs, prsKnown,
   };
 }
 export function eventCause(event: Event): Cause {
@@ -50,8 +56,7 @@ export function observeHandle(
   const p = event.payload;
   // Corrections and echo events must not masquerade as successful work handoffs.
   const supported = (event.name === 'issue_comment' && p.action === 'created' && parseSlash(p.comment?.body ?? '').length > 0)
-    || (event.name === 'issues' && ['opened', 'closed', 'reopened'].includes(p.action))
-    || (event.name === 'pull_request_target' && p.action === 'closed' && p.pull_request?.merged);
+    || (event.name === 'issues' && ['opened', 'closed', 'reopened'].includes(p.action));
   if (!config.enabled || !supported || p.sender?.type === 'Bot' || p.issue?.pull_request) return handle(event, gh, board);
   const cause = eventCause(event);
   const ns = relevantIssues(event, gh, repo);
@@ -82,14 +87,6 @@ export function observeHandle(
       for (const s of after) store.state.snapshots[s.number] = s;
       store.save();
     } else {
-      if (p.pull_request?.merged) {
-        const pr: Pull = { key: `${repo}#${p.pull_request.number}`, sha: p.pull_request.head?.sha ?? '', state: 'merged', url: p.pull_request.html_url };
-        for (const s of after) {
-          const prior = before.find(x => x.number === s.number)!;
-          prior.prs = [...prior.prs.filter(x => x.key !== pr.key), { ...pr, state: 'open' }];
-          s.prs = [...s.prs.filter(x => x.key !== pr.key), pr];
-        }
-      }
       enqueue(store, p.action === 'opened' ? before.filter(s => s.number !== changed) : before, after,
         { ...cause, requests }, config);
     }

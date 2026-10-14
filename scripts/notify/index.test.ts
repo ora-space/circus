@@ -46,3 +46,33 @@ test('PR references require actual GitHub objects and an explicit circus referen
   const f=fakeContext(args=>args.some(a=>a.includes('/timeline'))?JSON.stringify(event):JSON.stringify({number:1,state:'open',body:'Refs #95',base:{repo:{full_name:'ora-space/cloud'}},head:{sha:'abc123'},html_url:'https://github.com/ora-space/cloud/pull/1'}));
   assert.deepEqual(linkedPulls(f.ctx.gh,'ora-space/circus',95),[]);
 });
+
+test('observer attributes an author handoff to its command, not a later unrelated assignment',()=>{
+  const issue=fixture({labels:[{name:'status:needs-author'}],assignees:[{login:'dave'}]}).issue;
+  const events=[{event:'labeled',id:1,created_at:'2026-10-14T00:00:00Z',actor:{login:'circus[bot]',type:'Bot'}},
+    {event:'commented',id:2,user:{login:'owner',type:'User'},body:'/label status:needs-author'},
+    {event:'commented',id:3,user:{login:'alice',type:'User'},body:'/assign dave'}];
+  const f=fakeContext(args=>args.some(a=>a.includes('/reactions'))?JSON.stringify({content:'+1',user:{login:'circus[bot]',type:'Bot'}})
+    :args.includes('GET')&&args.some(a=>a.includes('/permission'))?JSON.stringify({permission:'write'}):events.map(e=>JSON.stringify(e)).join('\n'));
+  const result=observedCause(f.ctx.gh,'ora-space/circus',issue,state());
+  assert.equal(result?.actor,'owner');assert.deepEqual(result?.requests,['status:needs-author']);
+});
+test('reviewer can hand back author action and unassign in the same acknowledged comment',()=>{
+  const issue=fixture({body:'Parent: #10',labels:[{name:'status:needs-author'}]}).issue;
+  const events=[{event:'labeled',id:1,actor:{login:'circus[bot]',type:'Bot'}},
+    {event:'commented',id:2,user:{login:'bob',type:'User'},body:'/label status:needs-author\n/unassign bob'}];
+  const f=fakeContext(args=>args.some(a=>a.includes('/reactions'))?JSON.stringify({content:'+1',user:{login:'circus[bot]',type:'Bot'}})
+    :args.includes('GET')&&args.some(a=>a.includes('/permission'))?JSON.stringify({permission:'read'}):events.map(e=>JSON.stringify(e)).join('\n'));
+  const result=observedCause(f.ctx.gh,'ora-space/circus',issue,state({status:'in-review',parent:10,assignees:['bob']}));
+  assert.equal(result?.actor,'bob');assert.deepEqual(result?.requests,['status:needs-author']);
+});
+
+test('an unconfirmed newer matching request is not attributed to an older acknowledged one',()=>{
+  const issue=fixture({labels:[{name:'status:needs-author'}]}).issue;
+  const events=[{event:'labeled',id:1,actor:{login:'circus[bot]',type:'Bot'}},
+    {event:'commented',id:2,user:{login:'owner',type:'User'},body:'/label status:needs-author'},
+    {event:'commented',id:3,user:{login:'bob',type:'User'},body:'/label status:needs-author'}];
+  const f=fakeContext(args=>args.some(a=>a.includes('/comments/3/reactions'))?'':args.some(a=>a.includes('/reactions'))
+    ?JSON.stringify({content:'+1',user:{login:'circus[bot]',type:'Bot'}}):events.map(e=>JSON.stringify(e)).join('\n'));
+  assert.equal(observedCause(f.ctx.gh,'ora-space/circus',issue,state()),undefined);
+});

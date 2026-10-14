@@ -29,7 +29,7 @@ export function linkedPulls(run: Gh, repo: string, n: number): Pull[] {
 
 // Recover the human behind a bot-applied slash command using GitHub's authenticated reaction.
 // No natural language classification or --actor override in the live observer.
-export function observedCause(run: Gh, repo: string, issue: Issue, before: Snapshot | undefined): Cause | undefined {
+export function observedCause(run: Gh, repo: string, issue: Issue, before: Snapshot | undefined, dependency = false): Cause | undefined {
   const timeline = apiList<any>(run, `repos/${repo}/issues/${issue.number}/timeline?per_page=100`);
   const relevant = [...timeline].reverse().find(e => ['labeled', 'unlabeled', 'assigned', 'unassigned', 'closed', 'reopened'].includes(e.event));
   if (!relevant) return undefined;
@@ -41,8 +41,24 @@ export function observedCause(run: Gh, repo: string, issue: Issue, before: Snaps
     const comments = timeline.filter(e => e.event === 'commented' && e.user?.type !== 'Bot' && parseSlash(e.body ?? '').length);
     source = undefined;
     for (const comment of [...comments].reverse()) {
+      const commands = parseSlash(comment.body);
+      const status = issue.labels.find(l=>l.name.startsWith('status:'))?.name.slice(7) ?? 'none';
+      const assignees = issue.assignees.map(a=>a.login.toLowerCase());
+      const added = before ? assignees.filter(u=>!before.assignees.map(a=>a.toLowerCase()).includes(u)) : [];
+      const removed = before ? before.assignees.filter(u=>!assignees.includes(u.toLowerCase())) : [];
+      const lgtm = issue.labels.some(l=>l.name==='review:lgtm');
+      const matches = commands.some(cmd => dependency ? ['depend','undepend'].includes(cmd.verb)
+        : before && before.status !== status ? status === 'none'
+          ? cmd.verb === 'unlabel' && cmd.args.includes(`status:${before.status}`)
+          : cmd.verb === 'label' && cmd.args.includes(`status:${status}`)
+        : added.length || removed.length ? (cmd.verb === 'assign' && cmd.args.some(u=>added.includes(u.toLowerCase())))
+          || (cmd.verb === 'unassign' && cmd.args.some(u=>removed.map(x=>x.toLowerCase()).includes(u.toLowerCase())))
+        : before && before.lgtm !== lgtm ? cmd.verb === (lgtm ? 'label':'unlabel') && cmd.args.includes('review:lgtm')
+        : cmd.verb === 'label' && cmd.args.includes(`status:${status}`));
+      if (!matches) continue;
       const reactions = apiList<any>(run, `repos/${repo}/issues/comments/${comment.id}/reactions?per_page=100`);
       if (reactions.some(r => r.content === '+1' && r.user?.login === relevant.actor.login)) { source = comment; break; }
+      return undefined; // A newer matching command is unconfirmed; do not attribute its effect to an older request.
     }
     if (!source) return undefined;
     const actor = source.user.login;
@@ -50,7 +66,8 @@ export function observedCause(run: Gh, repo: string, issue: Issue, before: Snaps
     let writer: boolean | undefined;
     const permitted = () => writer ??= ['admin', 'write'].includes(api<any>(run, 'GET', `repos/${repo}/collaborators/${actor}/permission`).permission);
     // Reconstruct the permission-relevant pre-state for reviewers when handing R back to A.
-    const permissionIssue = before ? { ...issue, labels: before.status === 'none' ? [] : [{ name: `status:${before.status}` }] } : issue;
+    const permissionIssue = before ? { ...issue, assignees: before.assignees.map(login=>({login})),
+      labels: before.status === 'none' ? [] : [{ name: `status:${before.status}` }] } : issue;
     const allowed = commands.filter(cmd => authorize(cmd, actor, permissionIssue, permitted) === null);
     if (allowed.length !== commands.length) return undefined;
     requests = allowed.filter(c => c.verb === 'label').flatMap(c => c.args).filter(l => issue.labels.some(x=>x.name===l));
@@ -78,16 +95,6 @@ function dependencyCause(run: Gh, repo: string, n: number): Cause | undefined {
 }
 
 export function changeCause(run: Gh, gh: GitHub, repo: string, before: Snapshot, after: Snapshot, known: {[n:string]:Snapshot} = {}): Cause | undefined {
-  for (const pr of after.prs) {
-    const previous=before.prs.find(p=>p.key===pr.key);
-    if(previous?.state==='open' && pr.state!=='open') {
-      const [sourceRepo,number]=pr.key.split('#');
-      const timeline=apiList<any>(run,`repos/${sourceRepo}/issues/${number}/timeline?per_page=100`);
-      const event=[...timeline].reverse().find(e=>['closed','merged'].includes(e.event) && e.actor?.type!=='Bot');
-      if(event?.actor?.login)return {id:`pr:${pr.key}:${event.id}`,actor:event.actor.login,kind:'pr',sourceUrl:pr.url};
-      return undefined;
-    }
-  }
   if (before.parentOpen !== after.parentOpen && after.parent !== null) return observedCause(run,repo,gh.getIssue(after.parent),undefined);
   const changedRuns = after.runs.filter(r=>before.runs.some(old=>old.number===r.number && old.open!==r.open));
   if (changedRuns.length) return observedCause(run,repo,gh.getIssue(changedRuns[0].number),undefined);
@@ -101,6 +108,7 @@ export function changeCause(run: Gh, gh: GitHub, repo: string, before: Snapshot,
   if (removed.length || added.length) {
     const dependency=dependencyCause(run,repo,after.number);
     if(dependency)return dependency;
+    return observedCause(run,repo,gh.getIssue(after.number),before,true);
   }
   return observedCause(run,repo,gh.getIssue(after.number),before);
 }
