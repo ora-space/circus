@@ -1,0 +1,15 @@
+{
+  "enabled": false,
+  "transport": "feishu-webhook",
+  "ownerRecipients": [],
+  "rules": {
+    "owner_action_requested": true,
+    "author_action_requested": true,
+    "review_requested": true,
+    "collaboration_requested": true,
+    "review_evidence_changed": true,
+    "execution_readiness_changed": true,
+    "summary_required": true,
+    "active_work_withdrawn": true
+  }
+}
