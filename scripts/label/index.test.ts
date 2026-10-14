@@ -18,3 +18,12 @@ test('label rejects unregistered labels before commenting', () => {
   assert.throws(() => command.run(['x', 'repo:desktop'], ctx), UsageError);
   assert.equal(calls.length, 0);
 });
+
+test('label --sha names the reviewed commit next to an lgtm', () => {
+  const { ctx, calls } = fakeContext();
+  command.run(['5', '+review:lgtm', '--sha', 'a1b2c3d'], ctx);
+  assert.equal(calls[0].input, '审过 commit a1b2c3d\n\n/label review:lgtm');
+  assert.throws(() => command.run(['5', '+review:lgtm', '--sha', 'main'], ctx), /--sha/);
+  assert.throws(() => command.run(['5', '+review:lgtm', '--sha'], ctx), /--sha/);
+  assert.equal(calls.length, 1);
+});

@@ -44,12 +44,31 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 | 命令 | 作者 | 有写权限的人（owner） | assignee | 其他人 |
 |---|---|---|---|---|
-| `/label` `/unlabel` `/depend` `/undepend` | ✓ | ✓ | ✗ | ✗ |
+| `/label` `/unlabel` `/depend` `/undepend` | ✓ | ✓ | ✗（运行 issue 的 assignee 可以 review，见下文） | ✗ |
 | `/assign` | ✓ | ✓ | ✓ | ✗ |
 | `/unassign` 自己 | ✓ | ✓ | ✓ | ✓ |
 | `/unassign` 别人 | ✓ | ✓ | ✗ | ✗ |
 
-所以：自己开的 issue，label 随便改；别人的 issue，只能评论建议，由作者或 owner 决定。写权限按仓库权限（admin、write）判断，不写死账号。
+所以：自己开的 issue，label 随便改；别人的 issue，只能评论建议，由作者或 owner 决定。唯一的例外是运行 issue 的 assignee 作为 reviewer 打 review 结论（见下文"review 运行 issue"）。写权限按仓库权限（admin、write）判断，不写死账号。
+
+## review 运行 issue
+
+成员可以帮 owner review 别人的运行 issue，owner 会据此减少自己的审查，合并仍由 owner 决定。
+
+运行 issue 的 assignee 就是 reviewer：需要谁帮忙 review，就在运行 issue 里 `/assign` 对方（作者和 owner 都可以）。作者开完 PR 后给运行 issue 打 `status:in-review`，从这时起 reviewer 的 `brief` 在"需要 review"一组里列出它，reviewer 也才能打下面两个 label。只有 reviewer 和 owner 能打，其他成员只能评论。review 完、不再跟进时，reviewer `/unassign` 自己。review 的步骤：
+
+1. 在产品仓库的 PR 上留 GitHub 原生 review：没问题就 Approve，有问题就 Request changes，具体意见写在 PR 上。成员没有写权限也能提交 review，只是不计入合并条件。
+2. 在 circus 的运行 issue 上留结论，由 bot 校验后执行：
+   - 没问题：`node scripts/cli.ts label N +review:lgtm --sha <审过的 commit>`。评论里必须写明 commit SHA，否则 bot 拒绝。
+   - 有问题：`node scripts/cli.ts label N +status:needs-author`，再评论一条简述问题，或者链到 PR 上的 review。它替换掉 `status:in-review`，球回到作者手里，issue 离开 owner 的待审队列。
+   - 撤回 lgtm：`node scripts/cli.ts label N -review:lgtm`。
+
+规则：
+
+- 作者不能给自己的运行 issue 打 `review:lgtm`，owner 也不例外；正文里写 `review:lgtm` 不会被打上。
+- lgtm 只对审过的那个 commit 成立。有人打 `status:needs-author`（needs-author 优先于 lgtm），或者作者改完后重新打 `status:in-review`，bot 都会清掉 `review:lgtm`。所以作者 push 新 commit 后，要重新打一次 `status:in-review`，请人再审。
+- 一个 issue 只有一个 `review:lgtm`，记不了是谁、几个人打的：`updates N` 列出谁用斜杠命令改过 label。
+- owner 的 `brief` 把已 lgtm 的排在"等我处理"最前面；成员的 `brief` 有"需要 review"一组，列出 assign 给自己的、`status:in-review` 的运行 issue。
 
 ## 4. 拆分并行：找人帮忙，开运行 issue
 
@@ -157,7 +176,8 @@ circus/
 | `type:task` `type:bug` `type:decision` `type:question` `type:idea` | 类型：需要动手的工作、缺陷、等 owner 拍板的决策、待调研或待澄清的问题、未决定做不做的建议 | ✓ | ✓ |
 | `status:needs-owner` | 等 owner 回复、决策或授权 | ✓ | ✓ |
 | `status:in-review` | PR 待 owner 审 | ✓ | ✓ |
-| `status:needs-author` | owner 已回复、决定或提出要求，等作者跟进 | ✓ | ✓ |
+| `status:needs-author` | owner 或 reviewer 已回复、决定或提出要求，等作者跟进 | ✓ | ✓ |
+| `review:lgtm` | 别人审过运行 issue 的 PR，认为可以合并（见"review 运行 issue"）；作者重新打 `status:in-review` 或有人打 `status:needs-author` 时清除 | ✗ | ✓ |
 | `priority:p0`–`p3` | 优先级：立即、高、中、低；不设就是没有优先级 | ✓ | ✓ |
 | `repo:<name>` | 事项落在哪个 ora-space 仓库：desktop、specs、cluster、cloud、sandbox、marketplace；跨仓库可打多个 | ✓ | ✗ |
 | `run` | 运行 issue（正文首行 `Parent: #N`）。由 bot 管理：只在打开运行 issue 时由 bot 打上，命令不能增删 | ✗ | — |
@@ -165,9 +185,9 @@ circus/
 互斥的 label 族（每个 issue 至多一个值）在设置新值时自动替换旧值。
 
 - **`type:decision` 有长期价值。** 决策 issue 关闭后，标题和 `## 总结` 写明结论和理由，以后要查"当初为什么这么定"，用 `gh issue list -R ora-space/circus --state closed --label type:decision --search "<关键词>"` 就能找到。所以凡是要 owner 拍板的，都开成 `type:decision`：正文列选项、依据、代价，同时打 `status:needs-owner`。
-- **status 只表示"球在谁手里"。** 其余状态不用 label：在做 = 有未关闭的运行 issue，完成 = issue 已关闭。issue 关闭时 bot 移除它的 `status:*`。
+- **status 只表示"球在谁手里"。** 其余状态不用 label：在做 = 有未关闭的运行 issue，完成 = issue 已关闭。issue 关闭时 bot 移除它的 `status:*` 和 `review:*`。
   - 等 owner 的事，作者给自己的 issue 打 `status:needs-owner`（PR 待审打 `status:in-review`）；运行 issue 的作者改不了 parent，就打在自己的运行 issue 上。
-  - owner 回复、拍板或提出要求后，打 `/label status:needs-author`，它会替换掉 `needs-owner`，作者的 `brief` 会把这个 issue 放进"等我跟进"。只是顺手评论、不需要作者动作时，直接 `/unlabel status:needs-owner`。
+  - owner 回复、拍板或提出要求后，打 `/label status:needs-author`（reviewer 在别人的运行 issue 上也可以，见"review 运行 issue"），它会替换掉 `needs-owner` 或 `in-review`，作者的 `brief` 会把这个 issue 放进"等我跟进"。只是顺手评论、不需要作者动作时，直接 `/unlabel status:needs-owner`。
   - 作者跟进后 `/unlabel status:needs-author`，或者需要 owner 再看时改回 `status:needs-owner`。
   - 球传过来时，用 `node scripts/cli.ts updates N` 看对方上次之后说了什么：它以你上次发言为界，列出之后的评论、谁用斜杠命令改了状态、status 的完整轨迹。`brief` 在你负责的 issue 行尾标出"N 条新回复"（不算 bot 和纯斜杠命令）。
 
@@ -179,12 +199,12 @@ circus/
 |---|---|
 | `sync` | 会话开始时运行：本地 `main` 和 fork 的 `main` 对齐 `ora-space/circus` |
 | `whoami` | 当前账号是 owner 还是成员，也就是和 agent 对话的人 |
-| `brief [--mine]` | 先说明身份，再列未关闭的 issue，分五组，空组不显示：待关闭（我创建的，关联 PR 已合并、被 bot 重新打开过、或 parent 已关闭的运行 issue，最优先处理）；等我跟进（我创建的 `status:needs-author`）；等 owner 的（owner 看到所有人的 `status:needs-owner` 和 `status:in-review`，成员只看到自己创建的 `status:needs-owner`）；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
+| `brief [--mine]` | 先说明身份，再列未关闭的 issue，分组，空组不显示：待关闭（我创建的，关联 PR 已合并、被 bot 重新打开过、或 parent 已关闭的运行 issue，最优先处理）；等我跟进（我创建的 `status:needs-author`）；等 owner 的（owner 看到所有人的 `status:needs-owner` 和 `status:in-review`，已 `review:lgtm` 的在前；成员只看到自己创建的 `status:needs-owner`）；需要 review（只有成员有：assign 给我的、`status:in-review` 的运行 issue）；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
 | `new --title T [--label L]... [--depend N]... [--epic N] [--body-file F]` | 新建 issue；`--label`、`--depend` 写进正文，由 bot 打上、设为依赖；`--epic` 写"总事项：#N" |
 | `run N [--title T] [--body-file F]` | 为 #N 开运行 issue |
 | `updates N [--all]` | 你上次发言之后的动静：别人的评论、斜杠命令、status 轨迹、引用的 PR、关闭和重新打开、有更新的运行 issue |
 | `show N` | 完整输出 issue 和全部评论 |
-| `label N [+]L... -L...` | 评论 `/label`、`/unlabel` |
+| `label N [+]L... -L... [--sha C]` | 评论 `/label`、`/unlabel`；`--sha` 在评论里写明审过的 commit，打 `review:lgtm` 时要带 |
 | `assign N [+]@U... -@U...` | 评论 `/assign`、`/unassign` |
 | `depend N [+]#M... -#M...` | 评论 `/depend`、`/undepend` |
 | `close N --title T --summary-file F [--not-planned] [--for-author R] [--keep-local]` | 改标题、写总结、关闭；只限作者，代关要写理由；关闭后清理本地工作 |
@@ -218,11 +238,11 @@ Priority 字段来自 `priority:*`。owner 的 `brief` 已经列出所有人在�
 | 手动打上 label | 撤销并留言；打开后一分钟内、且正文里写了的 label 除外（`gh issue create --label` 产生的事件），运行 issue 上的 `run` 除外 |
 | 手动移除 label | 恢复并留言 |
 | 手动 assign / unassign | 撤销并留言 |
-| issue 关闭 | 正文不以 `## 总结` 开头，或不是作者关闭、总结第一行又没写代关理由，就重新打开并留言；有总结时移除 `status:*`、同步看板为 Done，通知依赖它的 issue 并重新同步它们；运行 issue 把总结评论到 parent，并重新同步 parent |
+| issue 关闭 | 正文不以 `## 总结` 开头，或不是作者关闭、总结第一行又没写代关理由，就重新打开并留言；有总结时移除 `status:*` 和 `review:*`、同步看板为 Done，通知依赖它的 issue 并重新同步它们；运行 issue 把总结评论到 parent，并重新同步 parent |
 | issue 重新打开 | 同步看板，连同依赖它的 issue（运行 issue 同步它的 parent） |
 | circus 的 PR 合并 | 在 PR 描述里 `Refs` / `Fixes` 等指向的未关闭 issue 下 @ 作者，提醒总结后关闭（`pull_request_target`，只运行 main 上的代码） |
 | 每天定时 / 在 Actions 页面手动触发 | 全量同步所有未关闭的 issue 到看板 |
-| 新评论 | 执行其中的斜杠命令（见权限表），同步看板；发出者不是作者时查一次仓库权限 |
+| 新评论 | 执行其中的斜杠命令（见权限表和"review 运行 issue"），同步看板；发出者不是作者时查一次仓库权限 |
 
 ## 开发
 

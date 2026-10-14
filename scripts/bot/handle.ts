@@ -7,7 +7,8 @@
 //     the summary says why), and tells dependents when a blocker closes,
 //   - reminds authors to close their issues when a circus PR referencing them is merged,
 //   - links runs to their parent and reports their summary back (see lib/run.ts),
-//   - drops status labels on close and mirrors issues onto the board (see lib/board.ts);
+//   - lets others review runs awaiting review (review:lgtm, status:needs-author),
+//   - drops status and review labels on close and mirrors issues onto the board (see lib/board.ts);
 //     nobody else writes to the board.
 // Events caused by bots (including itself) are ignored, so its own writes do not loop.
 import type { GitHub, Issue } from './github.ts';
@@ -41,7 +42,10 @@ export function authorize(cmd: SlashCommand, actor: string, issue: Issue, isWrit
   switch (cmd.verb) {
     case 'label':
     case 'unlabel':
-      return `只有${who}可以修改 label`;
+      if (parentOf(issue.body) === null || !logins(issue).includes(actor)) return `只有${who}可以修改 label`;
+      return cmd.args.every((l) => REVIEWER_LABELS[cmd.verb as 'label' | 'unlabel'].includes(l))
+        ? null
+        : `只有${who}可以修改 label；reviewer（运行 issue 的 assignee）只能 \`/label ${LGTM}\`、\`/label ${NEEDS_AUTHOR}\`、\`/unlabel ${LGTM}\``;
     case 'depend':
     case 'undepend':
       return `只有${who}可以修改依赖`;
@@ -54,12 +58,38 @@ export function authorize(cmd: SlashCommand, actor: string, issue: Issue, isWrit
   }
 }
 
-function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashCommand[]): string[] {
+// On a run, the assignees are the reviewers its author asked for. Besides the owner, they may
+// approve a run awaiting review with review:lgtm, or hand it back with status:needs-author
+// (which then replaces status:in-review).
+export const LGTM = 'review:lgtm';
+const IN_REVIEW = 'status:in-review';
+const NEEDS_AUTHOR = 'status:needs-author';
+const REVIEWER_LABELS = { label: [LGTM, NEEDS_AUTHOR], unlabel: [LGTM] };
+
+// A commit SHA (7–40 hex digits, at least one digit) says which revision an lgtm approved.
+const COMMIT_SHA = /(?<![\w])(?=[a-f]*\d)[0-9a-f]{7,40}(?![\w])/;
+
+// Why adding a review label is refused given the labels so far; null when allowed.
+function reviewRule(label: string, actor: string, issue: Issue, labels: string[], comment: string, isWriter: () => boolean): string | null {
+  if (label === LGTM) {
+    if (parentOf(issue.body) === null) return `${LGTM} 只用于运行 issue`;
+    if (actor === issue.user.login) return `作者不能给自己的运行 issue 打 ${LGTM}`;
+    if (!labels.includes(IN_REVIEW)) return `只能在 ${IN_REVIEW} 时打 ${LGTM}`;
+    if (!COMMIT_SHA.test(comment)) return `评论里要写明审过的 commit SHA`;
+  }
+  if (label === NEEDS_AUTHOR && actor !== issue.user.login && !isWriter() && !labels.includes(IN_REVIEW)) {
+    return `reviewer 只能在 ${IN_REVIEW} 时打 ${NEEDS_AUTHOR}`;
+  }
+  return null;
+}
+
+function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashCommand[], comment: string): string[] {
   const errors: string[] = [];
   let writer: boolean | undefined;
   const isWriter = () => (writer ??= ['admin', 'write'].includes(gh.permission(actor)));
-  const add: string[] = [];
-  const remove: string[] = [];
+  // Labels are applied in command order, so review rules see the labels set before them.
+  const current = names(issue);
+  let labels = current;
   for (const cmd of commands) {
     const line = `\`/${cmd.verb}${cmd.args.length ? ' ' + cmd.args.join(' ') : ''}\``;
     if (!cmd.args.length) {
@@ -78,10 +108,19 @@ function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashC
     if (cmd.verb === 'label') {
       const unknown = cmd.args.filter((l) => !isKnown(l) && !isBotLabel(l));
       if (unknown.length) errors.push(`${line}：未登记的 label ${unknown.join(' ')}`);
-      add.push(...cmd.args.filter((l) => isKnown(l)));
+      for (const l of cmd.args.filter((x) => isKnown(x))) {
+        const refused = reviewRule(l, actor, issue, labels, comment, isWriter);
+        if (refused) {
+          errors.push(`${line}：${refused}`);
+          continue;
+        }
+        labels = applyLabels(labels, [l], []);
+        // A new revision to review, or changes requested: an earlier lgtm no longer holds.
+        if (l === IN_REVIEW || l === NEEDS_AUTHOR) labels = labels.filter((x) => x !== LGTM);
+      }
     } else if (cmd.verb === 'unlabel') {
       // Any other label may be removed, including ones from before the registry.
-      remove.push(...cmd.args.filter((l) => !isBotLabel(l)));
+      labels = applyLabels(labels, [], cmd.args.filter((l) => !isBotLabel(l)));
     } else if (cmd.verb === 'assign') {
       const after = gh.addAssignees(issue.number, cmd.args);
       const skipped = cmd.args.filter((u) => !after.includes(u));
@@ -98,11 +137,7 @@ function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashC
       gh.removeAssignees(issue.number, cmd.args);
     }
   }
-  if (add.length || remove.length) {
-    const current = names(issue);
-    const next = applyLabels(current, add, remove);
-    if (next.join('\n') !== current.join('\n')) gh.setLabels(issue.number, next);
-  }
+  if (labels.join('\n') !== current.join('\n')) gh.setLabels(issue.number, labels);
   return errors;
 }
 
@@ -296,9 +331,9 @@ function dispatch(event: Event, gh: GitHub): number[] {
         return [n];
       }
       if (hasSummary(issue.body)) {
-        // Done is the closed state itself, not a label.
+        // Done is the closed state itself, not a label; neither is a review left on it.
         const current = names(gh.getIssue(n));
-        const open = current.filter((l) => !l.startsWith('status:'));
+        const open = current.filter((l) => !l.startsWith('status:') && !l.startsWith('review:'));
         if (open.length !== current.length) gh.setLabels(n, open);
         const parent = parentOf(issue.body);
         if (parent === null) return [n, ...notifyDependents(gh, issue)];
@@ -322,7 +357,7 @@ function dispatch(event: Event, gh: GitHub): number[] {
     case 'issue_comment.created': {
       const commands = parseSlash(event.payload.comment.body);
       if (!commands.length) return [];
-      const errors = applyCommands(gh, gh.getIssue(n), sender.login, commands);
+      const errors = applyCommands(gh, gh.getIssue(n), sender.login, commands, event.payload.comment.body);
       if (errors.length) gh.comment(n, [`${who} 以下命令有问题，其余已执行：`, ...errors.map((e) => `- ${e}`)].join('\n'));
       else gh.react(event.payload.comment.id, '+1');
       return [n];

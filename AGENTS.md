@@ -35,8 +35,9 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 
 **"#N 有更新"**：先 `node scripts/cli.ts updates N`，看你上次发言之后的评论、status 变化、PR 和运行 issue，再按"球在谁手里"接着做：
 
-- `status:needs-author`，你是作者：owner 已经回复。按 owner 的结论推进（改方案、同步文档、开运行），在 issue 里回复你打算怎么做；做完就关闭，需要 owner 再看就改回 `status:needs-owner`，否则 `/unlabel status:needs-author`。
+- `status:needs-author`，你是作者：owner 或 reviewer 已经回复。按 owner 的结论或 reviewer 的意见推进（改方案、同步文档、开运行、改 PR），在 issue 里回复你打算怎么做；做完就关闭，需要 owner 再看就改回 `status:needs-owner`，PR 改完就重新打 `status:in-review`，否则 `/unlabel status:needs-author`。
 - `status:needs-owner` 或 `status:in-review`，用户是 owner：把待决的点和各选项的代价讲给 owner，按 owner 的话在 issue 里写下结论，再 `/label status:needs-author` 交回作者。
+- 别人的运行 issue assign 给你且挂着 `status:in-review`（`brief` 的"需要 review"）：你是它的 reviewer，按 [review 运行 issue](scripts/README.md#review-运行-issue) 在 PR 上 Approve 或 Request changes，再在运行 issue 上打 `review:lgtm` 或 `status:needs-author`。
 - 其他情况：向用户概括新动静，问清要不要跟进；回复写在 issue 里。
 
 `brief` 也会在你负责的 issue 行尾标出"N 条新回复"，不用等别人提醒。
@@ -48,6 +49,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 - 所有讨论统一在 upstream 仓库 `ora-space/circus` 的 issue 里进行，即使本地是 fork 的 clone。fork 只用来提 PR，不在 fork 上开 issue、评论或改 label。`node scripts/cli.ts` 的命令总是指向 `ora-space/circus`；直接用 `gh issue` / `gh pr` 时必须带 `-R ora-space/circus`，否则 gh 可能落到 fork 上。circus 是私有仓库，成员以协作者身份参与。
 - issue 的标题、正文、评论和总结一律用中文；代码、命令、label、路径、报错原文和专有名词保留原样。
 - 只有作者关闭自己的 issue，owner 也不例外：别人的 issue 做完了，在里面提醒作者总结后关闭。确需代关（作者离开、事项作废）时用 `close --for-author "<理由>"`，否则 bot 会重新打开。
+- 运行 issue 有 `review:lgtm` 时，owner 可以据此减少审查；合并仍由 owner 决定。
 - owner 合并 PR 前，先看改动文件列表（`gh pr view N -R <repo> --json files`）：每个文件都是[交付物](scripts/README.md#开发产品仓库)才合并，混入计划、进度、实现日志这类过程记录时请作者移除。合并时只合并 PR，不顺手关闭关联的 issue。circus 的 PR 合并后，bot 会在 `Refs` 的 issue 里提醒作者；产品仓库的 PR 合并后，在关联的运行 issue 里评论提醒作者。
 - label 和 assignee 只通过 bot 修改：打开 issue 时写在正文里，之后用评论里的斜杠命令。权限见 [`scripts/README.md`](scripts/README.md#3-权限)。
 - 记忆和协议只能经 PR 改，PR 开在 `ora-space/circus`（从 fork 提时 `gh pr create -R ora-space/circus --head <login>:<branch>`），合并由 owner 决定。

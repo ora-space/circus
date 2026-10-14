@@ -218,6 +218,83 @@ test('authorize lets the author do everything without a permission lookup', () =
   }
 });
 
+// Reviews: issue #1 is alice's run awaiting review; bob and carol are its reviewers (assignees).
+const reviewed = (labels: string[] = ['status:in-review']) =>
+  fakeGitHub({ body: 'Parent: #9', labels: ['run', ...labels].map((name) => ({ name })), assignees: [{ login: 'bob' }, { login: 'carol' }] });
+
+test('reviewers approve someone else\'s run awaiting review with a commit SHA', () => {
+  const f = reviewed();
+  commentEvent(f, 'bob', '审过 a1b2c3d，可以合并\n/label review:lgtm');
+  assert.deepEqual(f.log, ['permission bob', 'labels run status:in-review review:lgtm', 'react 42 +1']);
+
+  const g = reviewed();
+  commentEvent(g, 'bob', '/label review:lgtm');
+  assert.match(g.log.at(-1)!, /`\/label review:lgtm`：评论里要写明审过的 commit SHA/);
+  assert.equal(g.log.filter((l) => l.startsWith('labels')).length, 0);
+});
+
+test('lgtm needs a run awaiting review, and never comes from its author', () => {
+  for (const [f, actor, why] of [
+    [reviewed(['status:needs-owner']), 'bob', /只能在 status:in-review 时打/],
+    [reviewed(), 'alice', /作者不能给自己的运行 issue 打/],
+    [fakeGitHub({ labels: [{ name: 'status:in-review' }] }), 'owner', /只用于运行 issue/],
+  ] as const) {
+    commentEvent(f, actor, 'a1b2c3d\n/label review:lgtm');
+    assert.match(f.log.at(-1)!, why);
+    assert.equal(f.log.filter((l) => l.startsWith('labels')).length, 0);
+  }
+});
+
+test('reviewers hand a run awaiting review back to its author, which drops the lgtm', () => {
+  const f = reviewed(['status:in-review', 'review:lgtm']);
+  commentEvent(f, 'carol', '/label status:needs-author');
+  assert.deepEqual(f.log, ['permission carol', 'labels run status:needs-author', 'react 42 +1']);
+
+  const g = reviewed(['status:needs-owner']);
+  commentEvent(g, 'carol', '/label status:needs-author');
+  assert.match(g.log.at(-1)!, /reviewer 只能在 status:in-review 时打 status:needs-author/);
+});
+
+test('reviewers may retract an lgtm but touch nothing else', () => {
+  const f = reviewed(['status:in-review', 'review:lgtm']);
+  commentEvent(f, 'bob', '/unlabel review:lgtm');
+  assert.deepEqual(f.log, ['permission bob', 'labels run status:in-review', 'react 42 +1']);
+
+  for (const body of ['/label priority:p1', '/unlabel status:in-review', '/label review:lgtm status:needs-owner']) {
+    const g = reviewed();
+    commentEvent(g, 'bob', `a1b2c3d\n${body}`);
+    assert.match(g.log.at(-1)!, /reviewer（运行 issue 的 assignee）只能/);
+  }
+  const h = fakeGitHub({ labels: [{ name: 'status:in-review' }], assignees: [{ login: 'bob' }] });
+  commentEvent(h, 'bob', '/label status:needs-author');
+  assert.match(h.log.at(-1)!, /只有作者 @alice 和有写权限的人可以修改 label$/);
+});
+
+test('only the run\'s assignees and the owner review it', () => {
+  const f = reviewed();
+  commentEvent(f, 'mallory', 'a1b2c3d\n/label review:lgtm\n/label status:needs-author');
+  assert.equal(f.log.filter((l) => l.startsWith('labels')).length, 0);
+  assert.match(f.log.at(-1)!, /只有作者 @alice 和有写权限的人可以修改 label$/m);
+
+  const g = reviewed();
+  commentEvent(g, 'owner', 'a1b2c3d\n/label review:lgtm');
+  assert.deepEqual(g.log, ['permission owner', 'labels run status:in-review review:lgtm', 'react 42 +1']);
+});
+
+test('the author asking for review again drops the lgtm', () => {
+  const f = reviewed(['status:in-review', 'review:lgtm']);
+  commentEvent(f, 'alice', '/label status:in-review');
+  assert.deepEqual(f.log, ['labels run status:in-review', 'react 42 +1']);
+});
+
+test('closing drops review labels along with status', () => {
+  const f = reviewed(['status:in-review', 'review:lgtm']);
+  f.state.state = 'closed';
+  f.state.body = '## 总结\n\n合并了\n\n---\n\nParent: #9';
+  handle({ name: 'issues', payload: { action: 'closed', issue: f.state, sender: user('alice') } }, f.gh);
+  assert.equal(f.log[0], 'labels run');
+});
+
 // Runs: issue #1 is the parent, #2 the run.
 const opened = (f: ReturnType<typeof fakeGitHub>, run: Issue) =>
   handle({ name: 'issues', payload: { action: 'opened', issue: run, sender: user(run.user.login) } }, f.gh);

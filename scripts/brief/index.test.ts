@@ -78,7 +78,7 @@ test('brief for the owner: everyone\'s issues waiting on the owner come right af
       '## 待关闭（我创建的） (1)',
       '- #4 mine merged（PR #9 已合并）  @me [status:in-review]',
       '',
-      '## 等我处理（owner：所有 needs-owner 和 in-review） (3)',
+      '## 等我处理（owner：所有 needs-owner 和 in-review，已 lgtm 的在前） (3)',
       '- #2 their review  @bob [status:in-review priority:p0]',
       '- #1 theirs waits  @bob [status:needs-owner]',
       '- #3 mine waits  @me [status:needs-owner]',
@@ -87,6 +87,37 @@ test('brief for the owner: everyone\'s issues waiting on the owner come right af
       '- #5 plain  @bob',
     ].join('\n'),
   );
+});
+
+test('brief for the owner: runs someone approved come first among those waiting', () => {
+  const issues = [
+    issue(1, 'urgent', 'bob', { labels: ['status:needs-owner', 'priority:p0'] }),
+    issue(2, '运行：审过', 'bob', { body: 'Parent: #8', labels: ['run', 'status:in-review', 'review:lgtm'] }),
+  ];
+  assert.equal(
+    format(issues, 'me', false, true),
+    [
+      '## 等我处理（owner：所有 needs-owner 和 in-review，已 lgtm 的在前） (2)',
+      '- #2 运行：审过（运行 → #8）  @bob [run status:in-review review:lgtm]',
+      '- #1 urgent  @bob [status:needs-owner priority:p0]',
+    ].join('\n'),
+  );
+});
+
+test('brief for a member: runs assigned to me are the ones I was asked to review', () => {
+  const run = (number: number, author: string, assignees: string[], labels = ['status:in-review']) =>
+    issue(number, `运行 ${number}`, author, { body: 'Parent: #8', labels: ['run', ...labels], assignees });
+  const issues = [
+    run(1, 'bob', ['me']),
+    run(2, 'bob', []),
+    run(3, 'me', ['me']),
+    issue(4, 'not a run', 'bob', { assignees: ['me'] }),
+    run(5, 'bob', ['me'], []),
+  ];
+  const text = format(issues, 'me', false);
+  assert.match(text, /## 需要 review（assign 给我的、in-review 的运行 issue） \(1\)\n- #1 /);
+  assert.match(text, /## 我负责的（@me） \(2\)\n- #4 .*\n- #5 /);
+  assert.doesNotMatch(format(issues, 'me', false, true), /需要 review/);
 });
 
 test('brief: issues of mine the owner answered come right after the closable ones', () => {
@@ -98,7 +129,7 @@ test('brief: issues of mine the owner answered come right after the closable one
   assert.equal(
     format(issues, 'me', true),
     [
-      '## 等我跟进（owner 已回复） (1)',
+      '## 等我跟进（owner 或 reviewer 已回复） (1)',
       '- #1 answered  @me [status:needs-author]',
       '',
       '## 等 owner（我创建的） (1)',

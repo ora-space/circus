@@ -37,7 +37,7 @@ export const FAMILIES: readonly LabelFamily[] = [
     descriptions: {
       'needs-owner': '等 owner 回复、决策或授权',
       'in-review': 'PR 待 owner 审',
-      'needs-author': 'owner 已回复、决定或提出要求，等作者跟进',
+      'needs-author': 'owner 或 reviewer 已回复、决定或提出要求，等作者跟进',
     },
     color: 'fbca04',
     exclusive: true,
@@ -51,6 +51,16 @@ export const FAMILIES: readonly LabelFamily[] = [
     color: 'd93f0b',
     exclusive: true,
     fromBody: true,
+  },
+  {
+    // Not settable from the body: an author must not approve their own run.
+    prefix: 'review',
+    values: ['lgtm'],
+    description: 'review 结论',
+    descriptions: { lgtm: '别人审过运行 issue 的 PR，认为可以合并；作者重新打 status:in-review 或有人打 status:needs-author 时清除' },
+    color: '0e8a16',
+    exclusive: true,
+    fromBody: false,
   },
   {
     prefix: 'repo',
