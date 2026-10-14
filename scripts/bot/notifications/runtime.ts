@@ -9,6 +9,12 @@ export const readJson = (path: string): unknown => {
 };
 export function runtime(ctx: Context, options: { config?: string; credentials?: string; recipients?: string }): { config: NotificationConfig; sender?: Sender } {
   const config = parseConfig(readJson(options.config ?? `${ctx.root}/scripts/bot/notifications/notifications.json`));
+  // Repository variable is the deployment switch; event payloads cannot override it.
+  const enabled = ctx.env.CIRCUS_NOTIFICATIONS_ENABLED;
+  if (enabled !== undefined && enabled !== '') {
+    if (!['true', 'false'].includes(enabled)) throw new Error('CIRCUS_NOTIFICATIONS_ENABLED 必须为 true 或 false');
+    config.enabled = enabled === 'true';
+  }
   if (!config.enabled) return { config };
   if (config.transport !== 'feishu-app') throw new Error('本次实现仅支持 feishu-app；群 webhook 尚未实现，不能启用');
   const credentials = options.credentials ? readJson(options.credentials) as { app_id: string; app_secret: string }

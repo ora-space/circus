@@ -11,6 +11,10 @@ export interface Record {
 export interface State { version: 2; snapshots: { [n: string]: Snapshot & { waitingForExecution?: boolean } }; records: Record[]; sources: string[] }
 export const emptyState = (): State => ({ version: 2, snapshots: {}, records: [], sources: [] });
 export interface StateStore { state: State; save(): void; close(): void }
+// Production best-effort delivery keeps only this invocation's candidates and identities.
+export function memoryStore(): StateStore {
+  return { state: emptyState(), save() {}, close() {} };
+}
 export function fileStore(path: string): StateStore {
   mkdirSync(dirname(path), { recursive: true });
   const lock = `${path}.lock`;

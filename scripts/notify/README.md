@@ -1,6 +1,6 @@
 # 本地飞书通知与 bot 接入
 
-`bot` 在成功业务变更前后采集协作状态，按 [逐项通知设置](../bot/notifications/README.md) 生成待办并持久保存，再发送飞书应用私聊。配置开关在收件人合并之前应用；操作者及其映射到同一飞书身份的账号均排除。失败后重试通知层，不重新执行 GitHub 操作。
+`bot` 在业务变更前后采集协作状态，按 [逐项通知设置](../bot/notifications/README.md) 生成通知并发送飞书应用私聊。生产默认采用直接发送：只在当前 Action 内暂存候选，不要求共享存储，允许少量通知失败，不跨运行补发。配置开关在收件人合并之前应用；操作者及其映射到同一飞书身份的账号均排除。通知配置、状态采集或发送失败记录日志，不阻止正常 GitHub 业务操作；业务操作本身失败仍使 Action 失败。
 
 `notify` 是本地只读观察器：在 upstream circus 已运行的 bot 改完真实状态之后，比较本地基线，验证操作者来源，再使用相同规则、队列和发送器。它不执行评论里的斜杠命令，不改 label，不模拟 owner 权限。生产 `bot` 路径使用源事件中的真实 sender；本地观察器使用 GitHub timeline 与同一 bot 的 👍 回应追溯合法命令，不能确认来源时保留基线并提示重试。
 
@@ -52,14 +52,30 @@ node scripts/notify/smoke.ts --config-file .tmp/notifications.local.json --crede
 
 不部署产品仓库额外 PR 监听，不根据 PR 合并/关闭/引用撤回发送通知。所有 PR 后续动作通过 circus 协议的状态交接表达。普通 push 不自动催审，新审查通过明确请求表达，并与最后一次请求版本比较；历史回补策略仍须在生产启用时确认。
 
-## 下一阶段：Actions
+## Actions 上线：直接发送
 
-本地验证通过后再设置 `FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`FEISHU_RECIPIENTS_JSON`，在 workflow 显式注入 env，并选择启用 `feishu-app`。本轮不上传这些值、不启用 upstream 通知。
+仓库 [circus workflow](../../.github/workflows/circus.yml) 注入下面三个 Repository Secrets；不需要额外存储或 self-hosted runner。
 
-启用 `bot` 必须指定 `CIRCUS_NOTIFICATION_STATE` 或 `--state-file`，且文件必须放在跨运行保留的存储中；GitHub hosted runner 每次清空，不能仅在 runner 上留下 JSON 就宣称生产持久化。上线还需要 owner 决定共享存储/补偿任务、workflow 串行策略及可信自动化来源。没有这些条件，保持总开关关闭。
+| 名称 | 值 |
+|---|---|
+| `FEISHU_APP_ID` | 飞书 App ID 原文，不包 JSON、不加引号 |
+| `FEISHU_APP_SECRET` | 飞书 App Secret 原文，不包 JSON、不加引号 |
+| `FEISHU_RECIPIENTS_JSON` | 上述 GitHub login → mobile/open_id 映射的完整 JSON 对象 |
 
-```text
-node scripts/cli.ts bot --config-file <启用配置> --credentials-file <本地凭据> --recipients-file <本地映射> --state-file <持久状态>
-```
+这些值与 GitHub App 的 `CIRCUS_APP_ID`、`CIRCUS_APP_PRIVATE_KEY` 不同；不保存 tenant_access_token。设置入口为 upstream 仓库 Settings → Secrets and variables → Actions。
+
+合并代码并填好 Secrets 后，在 Repository Variables 设置 `CIRCUS_NOTIFICATIONS_ENABLED=true` 开启生产通知，`false` 立即关闭后续运行。这个部署开关覆盖 JSON 的 enabled；未设置或为空时使用 JSON 值。其他逐项开关、渠道、ownerRecipients 仍按仓库配置，不从事件 payload 接受覆盖。ownerRecipients 是实际要接收 owner 通知的 GitHub login；个人映射不授予权限，名单为空时仍能发送作者/协作者通知。
+
+正常入口仅接受现有协议中的人发出的 issue 评论命令、创建、合法关闭及重开。使用 GitHub Actions 的真实事件和现有授权判断，无需新接 webhook。Bot 回声、手工改 label 的撤销和普通评论不触发飞书。PR 合并后由合并人在 issue 发 `/label status:needs-author`，不直接发 PR 通知。
+
+验收请另一位有权限的 owner/reviewer 给映射中的作者交接，确认只收到必要私聊；本人操作仍固定排除。失败在 Action 日志中可见，不保证送达，不定期扫描/回补历史，不因通知失败重新执行斜杠命令。不要重跑整个 Action 作为补发方式。
+
+workflow 使用相同 concurrency group 串行执行业务，并设置 `queue:max` 保留最多 100 个待运行任务；超过上限的事件或平台未投递的事件可能漏通知。稳定消息 UUID 保留，但无跨运行账本，不承诺消除所有重复。运行之间发生的撤回无法取消已经发出的聊天消息。
+
+没有持久历史时，依赖“此前已发收尾/认可”的撤回事件不发；跨事件延后恢复执行、与上次明确审查版本比较等历史判定也不保证。原生依赖编辑和第三方自动化没有新增实时入口；需要此类变更时使用 `/depend`、`/undepend` 及人的协议交接。当前直接模式保障的是现有真实业务事件可判定的即时动作，尤其是作者重新被需要的状态交接。
+
+## 可选：本地持久观察/补发
+
+以上本地 `notify` 和 smoke 仍使用文件状态以方便验证。`bot` 若显式传 `--state-file` 或 `CIRCUS_NOTIFICATION_STATE`，仍使用文件持久队列及失败重试模式；这是可选能力，不是直接发送上线前提。只有选择该模式才需要跨运行持久存储。前面“状态、补发及版本”一节的跨运行保证仅适用于持久模式。
 
 只有 `bot` 在 GitHub Action 上以 App 的真实权限执行业务写入；本地 `notify` 与 smoke 分别承担只读真实观察和模拟事件验证。

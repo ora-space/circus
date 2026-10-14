@@ -52,6 +52,7 @@ export function relevantIssues(event: Event, gh: GitHub, repo: string): number[]
 export function observeHandle(
   event: Event, gh: GitHub, repo: string, store: StateStore, config: NotificationConfig, board?: Board,
   pulls?: (n: number) => Pull[],
+  notificationError?: (error: unknown) => void,
 ): void {
   const p = event.payload;
   // Corrections and echo events must not masquerade as successful work handoffs.
@@ -59,23 +60,30 @@ export function observeHandle(
     || (event.name === 'issues' && ['opened', 'closed', 'reopened'].includes(p.action));
   if (!config.enabled || !supported || p.sender?.type === 'Bot' || p.issue?.pull_request) return handle(event, gh, board);
   const cause = eventCause(event);
-  const ns = relevantIssues(event, gh, repo);
-  const before = ns.map(n => snapshot(gh, repo, n, pulls));
   const changed = p.issue?.number;
-  // GitHub delivers lifecycle events after the state has changed. Reconstruct the pre-event graph.
-  if (event.name === 'issues' && ['closed', 'reopened'].includes(p.action)) {
-    const wasOpen = p.action === 'closed';
-    for (const s of before) {
-      if (s.number === changed) s.open = wasOpen;
-      if (s.parent === changed) s.parentOpen = wasOpen;
-      for (const run of s.runs) if (run.number === changed) run.open = wasOpen;
-      if (gh.blockedBy(s.number).some(b => b.number === changed)) {
-        s.blockers = wasOpen ? [...new Set([...s.blockers, changed])].sort((a,b)=>a-b) : s.blockers.filter(n => n !== changed);
+  let ns: number[], before: Snapshot[];
+  try {
+    ns = relevantIssues(event, gh, repo);
+    before = ns.map(n => snapshot(gh, repo, n, pulls));
+    // GitHub delivers lifecycle events after the state has changed. Reconstruct the pre-event graph.
+    if (event.name === 'issues' && ['closed', 'reopened'].includes(p.action)) {
+      const wasOpen = p.action === 'closed';
+      for (const s of before) {
+        if (s.number === changed) s.open = wasOpen;
+        if (s.parent === changed) s.parentOpen = wasOpen;
+        for (const run of s.runs) if (run.number === changed) run.open = wasOpen;
+        if (gh.blockedBy(s.number).some(b => b.number === changed)) {
+          s.blockers = wasOpen ? [...new Set([...s.blockers, changed])].sort((a,b)=>a-b) : s.blockers.filter(n => n !== changed);
+        }
       }
     }
+    for (const s of before) store.state.snapshots[s.number] ??= s;
+    store.save(); // A failing mutation/read can be reconciled against this pre-operation baseline.
+  } catch (e) {
+    if (!notificationError) throw e;
+    notificationError(e);
+    return handle(event, gh, board);
   }
-  for (const s of before) store.state.snapshots[s.number] ??= s;
-  store.save(); // A failing mutation/read can be reconciled against this pre-operation baseline.
   const requests: string[] = [];
   let failure: unknown;
   try { handle(event, gh, board, { acceptedLabel: (_n, l) => requests.push(l) }); }
@@ -90,7 +98,10 @@ export function observeHandle(
       enqueue(store, p.action === 'opened' ? before.filter(s => s.number !== changed) : before, after,
         { ...cause, requests }, config);
     }
-  } catch (e) { failure ??= e; }
+  } catch (e) {
+    if (notificationError) notificationError(e);
+    else failure ??= e;
+  }
   if (failure) throw failure;
 }
 
