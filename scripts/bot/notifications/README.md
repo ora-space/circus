@@ -1,104 +1,110 @@
 # 状态切换通知设置表
 
-本表定义通知配置键、接收角色和必要条件，供通知实现与后续配置使用。[notifications.json](notifications.json) 保存机器可读默认设置。当前 bot 尚未读取此配置；接通模块后，须完成渠道、人员映射与发送验证才能启用。
+配套 [notifications.json](notifications.json)，每个配置路径对应一个具体转移或事件。这些字段由 circus 定义，不是 GitHub/飞书原生字段。当前 bot 尚未读取配置；接入通知模块并验证渠道和人员映射后才能启用。
 
 ## 设置方式
 
 | 字段 | 默认 | 含义 |
 |---|---|---|
-| `enabled` | `false` | 总开关，准备好渠道与人员映射后开启 |
-| `transport` | `feishu-webhook` | 群机器人 webhook；其他渠道须先实现对应发送器 |
-| `ownerRecipients` | `[]` | 接收决策/审查通知的 owner GitHub login；不赋予协作权限 |
-| `rules.<事件名>` | 见下表 | `true` 开启该类必要消息，`false` 关闭；未声明事件关闭 |
+| `enabled` | false | 总开关 |
+| `transport` | feishu-webhook | 群 webhook；其他渠道须实现发送器 |
+| `ownerRecipients` | [] | 接收决策/审查通知的 owner GitHub login，不授予权限 |
+| `initialStatus` | 见下表 | 创建时初始交接，独立于后续转移 |
+| `statusTransitions` | 见矩阵 | open issue 具体前后状态 |
+| `events` | 见事件表 | 状态值变化以外的具体业务事件 |
 
-读取器应拒绝未知字段、事件、渠道和错误类型；开启时检查 owner 名单、渠道凭据及人员映射。路由按下表固定计算，开关不能绕过必要性和自通知过滤。配置通过 PR 修改。
+将单项改为 false 即关闭，缺项也关闭；不提供通配符和旧8类聚合开关。读取器须拒绝未知字段/事件/状态对、错误类型和未支持渠道；启用时验证 owner 名单、凭据及映射。设置经 PR 修改。
 
-## 必要通知设置表
+例如，只关闭依赖reopen，设置 `events.blocker_reopened=false`；最后依赖解除不受影响。只关闭决策转待审，设置 `statusTransitions["needs-owner->in-review"]=false`；其他来源的审查请求仍独立控制。
 
-分类默认值在总开关开启后生效。
+## 创建时初始交接
 
-| 配置键 | 默认 | 必要动作 | 接收人 | 限制 |
+| 配置路径 | 默认 | 收件人 | 条件 |
+|---|---|---|---|
+| `initialStatus.needs-owner` | 开 | owner | 明确请求另一位owner决策 |
+| `initialStatus.in-review` | 开 | owner；运行reviewer | 已明确交付待审 |
+| `initialStatus.needs-author` | 关 | 作者 | 创建者就是作者，固定排除自通知 |
+
+创建不另匹配none→目标状态，避免两个开关控制一次交接；初始none或分类标签静默。
+
+## open issue 全部4×4交接转移
+
+路径为 `statusTransitions["之前->之后"]`。none=无status。表中默认值均须再经过必要性过滤。
+
+| 之前→之后 | none | needs-owner | in-review | needs-author |
 |---|---|---|---|---|
-| `owner_action_requested` | 开 | 决策、回复、授权请求 | 配置的 owner | 初始或进入 needs-owner；同状态确有新请求 |
-| `author_action_requested` | 开 | 跟进结论、修改；活动协作者退出需重新安排；待审 PR 未合并撤回需处理 | 对应 issue 作者 | 只针对实际待办，撤标签不等同新任务 |
-| `review_requested` | 开 | 请求/重新请求审查；已待审运行新增 reviewer | owner；运行的 reviewer | 记录请求标识与 PR/head SHA；预登记 reviewer 等进入待审才通知；已待审新增只通知新增者 |
-| `collaboration_requested` | 开 | 普通 issue 新增实际协作任务 | 新增参与者 | 仅 API 接受的新增指派，带阶段/依赖上下文，不误称立即开工 |
-| `review_evidence_changed` | 开 | lgtm 新增、明确撤销；版本变化使已通知认可失效 | owner | 转作者修改/重新请求审查时合并消息；关闭清理静默 |
-| `execution_readiness_changed` | 开 | 最后依赖解除、执行前提重新阻塞、重开恢复执行 | 受影响执行人员，包括 active run 作者；无人承接时事项作者兜底 | 只通知实际恢复或需检查前提的人，不广播历史参与者，不自动停止无关工作 |
-| `summary_required` | 开 | PR 合并需检查交付并总结；最后运行结束需汇总；parent 关闭但运行未收尾 | 关联 issue 作者、parent 作者或未结束 run 作者 | 部分合并不代表全部完成；最后运行结束仅在 parent open、无阻塞、无其他交接时催汇总 |
-| `active_work_withdrawn` | 开 | 撤销活动协作/审查任务；run 重开使已发收尾判断失效 | 原待办接收人 | 仅真实活动待办或必须撤回的已发判断；预登记移除与普通清理静默 |
+| none | 关 | 开 | 开 | 开 |
+| needs-owner | 关 | 关 | 开 | 开 |
+| in-review | 关 | 开 | 关 | 开 |
+| needs-author | 关 | 开 | 开 | 关 |
 
-普通 issue assignee 是参与者，运行 issue assignee 是 reviewer；作者不能审自己的运行。owner 名单只影响通知路由，权限仍按协作协议校验。
+进入needs-owner通知owner；进入in-review通知owner及运行reviewer；进入needs-author通知作者。普通issue的assignee是参与者，运行assignee是reviewer，作者不能审自己的运行。
 
-## 交接状态的全部 4×4 转移
+对角线为关闭：状态值不变时没有转移，明确的新请求由下表控制。退回none也关闭：撤标签不自动产生待办，不等于PR合并；真正恢复执行使用execution_resumed_after_handoff。当前设计中这7格不允许开启，读取器遇到true应报错；其他9格可分别控制。
 
-仅针对 open issue。N=无 status，O=needs-owner，R=in-review，A=needs-author。矩阵生成候选动作，还须过滤与合并。
+状态发生变化只匹配对应状态对，不再匹配同状态请求事件，不能绕过已关闭的状态对。创建、关闭与重开使用各自事件条件，不误匹配普通交接转移。
 
-| 之前→之后 | N | O | R | A |
-|---|---|---|---|---|
-| N | 静默 | owner 决策 | owner/reviewer 审查 | 作者跟进 |
-| O | 静默 | 无新请求静默 | 决策转审查 | 作者跟进结论 |
-| R | 静默 | 决策/授权 | 新版本或明确重新审查；无新请求静默 | 作者修改 |
-| A | 静默 | 再次决策 | 交回审查 | 无新请求静默 |
+## 具体事件逐项开关
 
-O→N 不意味着作者有新任务，R→N 不意味着 PR 合并。同状态可能是新审查或要求：来源事件、请求标识和 PR/head SHA 用于区分新请求与重放，不能只比较标签。无法确认版本时，不能静默丢弃合法明确的重新审查请求。
+完整路径为 `events.<键>`。“开”表示满足必要条件才通知。
 
-## 生命周期和协作关系转移
+| 键 | 默认 | 收件人 | 必要条件 |
+|---|---|---|---|
+| `owner_request_updated` | 开 | owner | needs-owner不变，明确提出新的决策请求 |
+| `author_request_updated` | 开 | 作者 | needs-author不变，明确交回新的要求 |
+| `review_requested_for_new_revision` | 开 | owner/reviewer | in-review不变，明确请求审查新PR/head版本 |
+| `review_requested_again_same_revision` | 开 | owner/reviewer | in-review不变，同版本明确发起新一轮请求；原请求重放不算 |
+| `participant_assigned` | 开 | 新增参与者 | 普通issue实际新增协作指派 |
+| `reviewer_assigned_during_review` | 开 | 新增reviewer | 运行已待审时增加reviewer；预登记静默 |
+| `participant_left` | 开 | 事项作者 | 参与者自行退出实际活动协作，需确认安排 |
+| `reviewer_left_during_review` | 开 | 运行作者 | 活动reviewer自行退出，需确认安排；owner仍能审查 |
+| `participant_removed` | 开 | 被移除参与者 | 他人移除已有活动执行待办的参与者 |
+| `reviewer_removed_during_review` | 开 | 被移除reviewer | 他人移除已有活动审查待办的reviewer |
+| `lgtm_added` | 开 | owner | 新增review:lgtm |
+| `lgtm_withdrawn` | 开 | owner | 明确撤销lgtm；交接或关闭引起的清理不算 |
+| `lgtm_invalidated_by_revision` | 开 | owner | 版本变化使已通知认可失效；不逐push催审 |
+| `last_blocker_closed` | 开 | 实际等待执行者 | 最后未完成依赖合法关闭，包括运行issue |
+| `last_blocker_removed` | 开 | 实际等待执行者 | 删除最后未完成依赖，包括/undepend与原生关系编辑 |
+| `execution_resumed_after_handoff` | 开 | 实际等待执行者 | 依赖此前已解除，现结束交接等待后真正恢复执行 |
+| `blocker_added` | 开 | 受影响active run作者 | 新增依赖改变执行前提 |
+| `blocker_reopened` | 开 | 受影响active run作者 | 已完成依赖reopen影响执行 |
+| `blocker_replaced` | 开 | 受影响active run作者 | 仍被阻塞时增加/更换依赖，确有新执行影响 |
+| `issue_reopened` | 开 | 重新承担执行者 | 普通issue主动重开并恢复实际执行动作 |
+| `run_reopened` | 开 | 重新承担执行者 | parent open，运行重开并恢复实际执行动作 |
+| `parent_summary_invalidated_by_run_reopen` | 开 | parent作者 | run重开使已发收尾判断失效 |
+| `run_reopened_with_closed_parent` | 开 | run作者 | parent closed，run重开需收尾 |
+| `last_run_closed` | 开 | parent作者 | 最后run结束；parent open、无阻塞且无其他交接，可汇总 |
+| `parent_closed_with_open_runs` | 开 | 未结束run作者 | parent合法关闭，运行需收尾 |
+| `pr_merged` | 开 | 关联issue作者 | PR合并，检查剩余交付并总结；部分合并非全部完成 |
+| `review_pr_closed_without_merge` | 开 | 有处理动作的作者及有效审查人 | 待审PR未合并关闭，处理并撤回失效审查请求 |
+| `review_pr_reference_removed` | 开 | 有效审查人 | 撤回已通知的待审PR引用，原任务失效 |
 
-| 变化 | 判定 |
-|---|---|
-| 创建 N、普通分类标签 | 静默；初始 O/R/A 按交接矩阵，再排除创建者 |
-| 合法关闭 | 不广播完成；只检查依赖影响和未结束运行收尾 |
-| 违规关闭自动恢复、手工操作撤销、拒绝命令 | GitHub 保留校验反馈，不生成成功交接通知 |
-| 主动重开 | 仅恢复真实执行/收尾动作，不通知全部历史参与者 |
-| 第一个运行开始、作者兜底 assign | 静默 |
-| 某运行结束，其他仍在做 | 默认静默，GitHub 汇报保留；新决策/审查通过状态表达 |
-| 最后运行结束 | parent 可汇总时 summary_required，不宣称全部完成、不自动关闭 |
-| parent 关闭、运行仍 open | 对 run 作者 summary_required，不继续催审这些运行 |
-| run 重开、parent open | 恢复实际动作；已发 parent 收尾判断失效时 active_work_withdrawn |
-| run 重开、parent closed | 仅 run 收尾，不暗自重开 parent |
-| 普通事项新增指派 | collaboration_requested；运行预登记 reviewer 静默，进入 R 才 review_requested |
-| 自己退出协作 | 不通知退出者；确有活动协作时通知作者确认剩余安排。最后 reviewer 退出不妨碍 owner 审查 |
-| 移除他人 | 对实际执行/审查待办发 active_work_withdrawn；预登记移除静默 |
-| 新增/明确撤销 lgtm | review_evidence_changed；转 A/重新 R 合并，关闭清理静默 |
-| PR 合并 | summary_required，只说明当前合并项，不将多 PR 部分合并视为全部完成 |
-| 未合并关闭 PR、撤回待审引用 | 作者需处理时 author_action_requested；撤销已发审查请求时 active_work_withdrawn |
-| PR head 更新 | 已通知认可失效时 review_evidence_changed；新审查须明确请求，不逐 push 催审 |
+新版本请求、同版本新一轮请求与重放须用来源、请求标识、PR/head SHA区分，普通评论或重复命令不构成新请求。无法确认版本时不能丢弃合法明确的重新审查请求，须暴露判定限制。
 
-## 依赖子状态机
+last_blocker_closed与last_blocker_removed按原因互斥。仍等交接时先记录已解除依赖，结束等待后匹配execution_resumed_after_handoff。blocker_added表示无阻塞→有阻塞；已有阻塞时增加/更换依赖用blocker_replaced；因依赖重开用blocker_reopened，不叠加别的阻塞原因。
 
-保留未完成依赖集合、运行集合及作者。看板 `Done > status > Blocked > Running > Open` 只是投影，status 不能盖掉真实执行影响。
+run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控制。parent关闭也可能影响运行收尾和依赖执行，按不同真实动作分别匹配。先按开关过滤候选，再合并消息，不借别的事件恢复已关闭候选。
 
-| 未完成依赖变化 | 判定 |
-|---|---|
-| 多个→仍有 | 中间完成默认静默 |
-| 最后一个→无 | 实际恢复执行时通知；覆盖合法关闭、/undepend、原生依赖编辑 |
-| 无→有，包括依赖 reopen | 存在受影响 active run 时提醒作者检查前提，不自动停止所有工作 |
-| 有→有，增加/替换 | 默认静默，仅新增真实执行影响时通知 |
-| 添加已关闭依赖、重复删除 | 无实际阻塞变化，静默 |
-| 违规关闭后自动恢复 | 不先发「可以开始」，等合法结果 |
-| 被阻塞事项 closed | 不催恢复；parent closed 的 run 只走收尾 |
+## 固定静默和过滤
 
-O/R/A 仍生效时，解除依赖通常只更新上下文；交接结束并确实恢复执行后再判定。依赖目标包含运行 issue，关闭/reopen 都要处理直接依赖者。
+不提供泛广播开关：普通创建与分类标签、普通评论及标题正文编辑、开始运行、作者兜底assign、预登记reviewer、无后续动作的完成、非最后run结束、中间依赖完成、违规关闭自动恢复、手工改动撤销、命令拒绝、看板同步。
 
-## 固定过滤与送达要求
+1. 按合法成功命令及最终有效状态判断，不通知同评论中间切换。assign后unassign或移除再补回且无新动作静默；部分成功须保存可补偿结果。
+2. 固定排除源业务操作者本人，bot代执行追溯到人，跨issue一样；账号与实际飞书接收身份双层去重。
+3. 同人、同源、同目标issue合成一条；新增指派+进入待审只发一次审查邀请，但每个候选先分别应用开关。
+4. 发送前复核，丢弃已处理/撤回待办。lgtm因转needs-author、重新请求in-review或合法关闭被清理，不算明确撤销。
+5. 主动重开仅恢复实际动作，不广播历史参与者。parent closed的run只收尾，不暗自重开parent。
+6. 执行人员包含active run作者，没人承接时事项作者兜底；不向全部assignee泛通知，不要求停止不受影响工作。
+7. 消息只含标题、原因、下一步动作、GitHub链接；评论中新任务通过status/assign明确交接，不猜测所有自然语言请求。
 
-1. 按执行前状态、成功命令和最终有效状态计算动作，不通知同评论中间状态；部分成功也要保留可补偿结果。
-2. 排除源业务操作者本人，bot 代执行追溯到人，跨 issue 一样；自己创建、标记、认领、合并及完成依赖不回发。
-3. GitHub 账号与飞书接收身份双层去重；同人、同源、同目标 issue 合成一条。新增指派+R 只发一次审查邀请。
-4. 同评论 assign 后 unassign、移除再补回且无新动作，静默。普通评论、标题正文编辑、type/repo/priority、运行开始、看板同步不广播。
-5. 发送前复核动作，丢弃已处理/撤回的过时请求；仅继续执行有成本或风险时补撤销提示。
-6. 持久记录来源、请求版本、有效待办及送达状态，补偿只补缺失有效动作。初始化建立基线；历史待办回补由 owner 确认。
-7. 未绑定人员属于未送达，要暴露失败并支持补发，不假装 @ 成功、不退化成 @all。通知失败不撤销业务写入，补发不重跑业务；看板失败不能丢通知。
+## 状态和送达契约
 
-消息包含标题、原因、下一步动作和 GitHub 链接。普通评论的新任务必须用 status/assign 明确交接，不推断所有自然语言请求。
+保留生命周期、交接、作者/assignee、parent/运行集合及作者、未完成依赖集合、审查请求/证据及各PR状态。看板Done > status > Blocked > Running > Open只是投影，不能盖掉执行影响。依赖目标包括run，关闭/reopen也须处理直接依赖者。
 
-## 渠道和实现接口
+持久保存来源、版本、有效待办和送达结果；补偿仅补缺失有效动作，不绕过关闭设置或全量广播。初始化建立基线，历史回补由owner确认。产品PR、原生依赖、可信自动化结果须可靠来源或持久基线补偿；抑制自身label/comment回声。
 
-群 webhook 使用 Actions secrets `FEISHU_WEBHOOK_URL`、`FEISHU_SIGNING_SECRET`、`FEISHU_RECIPIENTS_JSON`（GitHub login→飞书 ID，注明类型）；login 匹配忽略大小写，外部群使用有效 open_id。应用私聊需接入对应发送器、权限/可用范围、凭据和 token 管理。
+群webhook使用Actions secrets FEISHU_WEBHOOK_URL、FEISHU_SIGNING_SECRET、FEISHU_RECIPIENTS_JSON（GitHub login→飞书ID，注明类型）；login忽略大小写，外部群使用有效open_id。未绑定即未送达，暴露失败并支持补发，不退化成@all。应用私聊须实现相应发送器、权限/范围和token管理。
 
-通知判断器输入包括生命周期、交接、作者/assignee、parent/运行、未完成依赖、审查请求/证据和各关联 PR 状态；输出带来源与请求版本的人员动作。产品 PR 和原生依赖变更须有完整事件来源或持久基线补偿。只抑制自身 label/comment 回声，可信其他自动化的真实业务结果也要覆盖。
+通知失败不撤销业务写入，补发不重跑业务；看板失败不能丢通知。协调并发更新和共享webhook限速，凭据脱敏，检查HTTP及业务返回码。超时可能已发送成功，webhook不能保证严格一次送达；持久记录用于尽力去重、定位失败与补发。
 
-协调并发状态更新和共享 webhook 限速，密钥脱敏，同时检查 HTTP 与业务返回码，配置错误不盲目重试。webhook 超时可能已发送成功，不能保证严格一次送达；持久记录用于尽力去重、定位失败和补发。
-
-飞书能力与发送规范见[自定义机器人指南](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot)及[应用消息 API](https://open.feishu.cn/document/server-docs/im-v1/message/create)。
+发送规范见[自定义机器人指南](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot)和[应用消息API](https://open.feishu.cn/document/server-docs/im-v1/message/create)。
