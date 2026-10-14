@@ -1,13 +1,13 @@
 # 状态切换通知设置表
 
-配套 [notifications.json](notifications.json)，每个配置路径对应一个具体转移或事件。这些字段由 circus 定义，不是 GitHub/飞书原生字段。当前 bot 尚未读取配置；接入通知模块并验证渠道和人员映射后才能启用。
+配套 [notifications.json](notifications.json)，每个配置路径对应一个具体转移或事件。这些字段由 circus 定义，不是 GitHub/飞书原生字段。bot 已接入配置、语义判断及持久待发队列；总开关仍默认关闭。应用私聊、本地验证和生产启用边界见 [notify 使用说明](../../notify/README.md)。
 
 ## 设置方式
 
 | 字段 | 默认 | 含义 |
 |---|---|---|
 | `enabled` | false | 总开关 |
-| `transport` | feishu-webhook | 群 webhook；其他渠道须实现发送器 |
+| `transport` | feishu-webhook | 配置保留原默认值；已实现 feishu-app 应用私聊，启用时须选择已实现渠道 |
 | `ownerRecipients` | [] | 接收决策/审查通知的 owner GitHub login，不授予权限 |
 | `initialStatus` | 见下表 | 创建时初始交接，独立于后续转移 |
 | `statusTransitions` | 见矩阵 | open issue 具体前后状态 |
