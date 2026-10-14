@@ -243,6 +243,8 @@ Priority 字段来自 `priority:*`。owner 的 `brief` 已经列出所有人在�
 
 ## Bot
 
+状态切换通知的配置键、默认设置、接收角色与完整转移条件见 [通知设置表](bot/notifications/README.md)，机器可读设置见 [notifications.json](bot/notifications/notifications.json)。通知模块接入后按该表判断必要动作；开启前完成渠道和人员映射验证。
+
 [`.github/workflows/circus.yml`](../.github/workflows/circus.yml) 以 GitHub App 身份运行 `node scripts/cli.ts bot`（App 只授权 circus 仓库，Issues 读写、Metadata 只读（查询仓库权限），以及组织 Projects 读写（同步看板）；ID 在仓库变量 `CIRCUS_APP_ID`，私钥在 secret `CIRCUS_APP_PRIVATE_KEY`）。bot 忽略所有 Bot 账号触发的事件，所以自己的写入不会循环。PR 上的事件不处理。
 
 | 事件 | 处理 |
