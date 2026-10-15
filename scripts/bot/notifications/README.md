@@ -110,7 +110,7 @@ run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控�
 |---|---|---|
 | `execution_resumed_after_handoff` | 永远不发 | 要知道"交接期间依赖已经解除"，这个记录在上一次运行里 |
 | `review_requested_for_new_revision` | 永远不发；重新请求审查一律按 `review_requested_again_same_revision` 发出 | 比较版本要用上一次请求审查时的 PR head，本次前后快照的 head 相同 |
-| `parent_summary_invalidated_by_run_reopen` | 会发，但不核对之前是否真的提醒过 parent 作者收尾 | "已发过收尾提醒"属于历史记录 |
+| `parent_summary_invalidated_by_run_reopen` | 永远不发 | 只有之前确实发过 `last_run_closed` 才发，这条记录在上一次运行里 |
 | 定时同步补转的 preflight | 不发 `preflight_promoted` | 定时同步和手动 resync 不经过通知观察，只有 issue 事件和带斜杠命令的评论会经过 |
 | 网页上直接改依赖（不用 `/depend`、`/undepend`） | `blocker_added`、`blocker_replaced`、`last_blocker_removed` 不发 | 原生依赖编辑不触发 bot 事件 |
 | 发送失败 | 只记日志，不补发 | 没有待发队列 |
@@ -149,7 +149,7 @@ run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控�
 | blocker_replaced | 仍被阻塞时增加/更换依赖，影响 active run |
 | issue_reopened | 普通事项合法重开且当前无交接/依赖等待，恢复实际执行 |
 | run_reopened | parent open，执行任务合法重开且当前无交接/依赖等待 |
-| parent_summary_invalidated_by_run_reopen | 直接模式下运行重开且 parent 没有其他开着的运行就发，不核对之前是否发过收尾提醒；持久模式可核对 |
+| parent_summary_invalidated_by_run_reopen | 需要此前已发 last_run_closed 的记录；直接模式永远不发，持久模式可判定 |
 | run_reopened_with_closed_parent | 执行任务重开，但 parent 已关闭；只提醒收尾 |
 | last_run_closed | 最后 active run 关闭，parent open 且无交接/依赖等待；提醒汇总，不自动宣告完成 |
 | parent_closed_with_open_runs | parent 合法关闭，提醒未关闭 run 的作者收尾 |

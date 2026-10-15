@@ -71,3 +71,24 @@ test('closing a decision tells the author of a promoted preflight once, on the r
   assert.deepEqual(sent.map(m => m.to), ['worker']);
   assert.match(sent[0].text, /#4 运行：实现[\s\S]*由 preflight 转为正式执行/);
 });
+
+test('lgtm reaches the run author; the author asking again tells the reviewer it no longer holds', async () => {
+  const f = fixture({ number: 10, id: 1010, title: '父事项' });
+  const run = { ...structuredClone(f.issue), number: 11, id: 1011, title: '运行：前端', body: 'Parent: #10',
+    assignees: [{ login: 'bob' }], labels: [{ name: 'run' }, { name: 'status:in-review' }] };
+  f.items.set(11, run);
+  const sent: { to: string; text: string }[] = [];
+  const all = { hasRecipient: () => true, identity: async (u: string) => u, send: async (to: string, text: string) => { sent.push({ to, text }); } };
+  const comment = (login: string, body: string, id: number) => deliverEvent({ name: 'issue_comment', payload: { action: 'created',
+    issue: structuredClone(f.items.get(11)), sender: { login, type: 'User' }, comment: { id, created_at: '2026-10-15T00:00:00Z', body } } },
+    f.gh, 'ora-space/circus', config(), all, () => {});
+  await comment('bob', '审过 abc1234\n/label review:lgtm', 30);
+  assert.deepEqual(sent.map(m => m.to), ['alice']);
+  assert.match(sent[0].text, /审查认可/);
+  sent.length = 0;
+  await comment('alice', '/label status:in-review', 31);
+  assert.deepEqual(f.items.get(11)!.labels.map(l => l.name), ['run', 'status:in-review']);
+  const bob = sent.filter(m => m.to === 'bob');
+  assert.equal(bob.length, 1);
+  assert.match(bob[0].text, /此前给出的认可已失效/);
+});

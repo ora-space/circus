@@ -63,8 +63,8 @@ export function enqueue(store: StateStore, before: Snapshot[], after: Snapshot[]
       prs: priorReview?.prs ?? previous.prs, prsKnown: priorReview?.prsKnown };
     if (!replay) {
       const generated = candidates(previousWithHistory, current, cause, config).filter(c => {
-        const needed = c.key === 'parent_summary_invalidated_by_run_reopen' ? 'last_run_closed'
-          : c.key === 'lgtm_invalidated_by_revision' ? 'lgtm_added' : undefined;
+        // A reopened run only invalidates a summary prompt that was actually sent.
+        const needed = c.key === 'parent_summary_invalidated_by_run_reopen' ? 'last_run_closed' : undefined;
         return !needed || store.state.records.some(r => r.state === 'sent' && r.candidates.some(p => p.issue === s.number && p.key === needed));
       });
       pending.push(...generated);
@@ -101,14 +101,16 @@ export async function flush(
   const currentSnapshot = (n: number) => ({ ...refresh(n), handoffId: store.state.snapshots[n]?.handoffId });
   const validCandidate = (c: Candidate, s: Snapshot) => {
     if (!configured(c, config) || !s.open || (c.guard.handoffId && c.guard.handoffId !== s.handoffId)) return false;
+    const reviewer = s.parent !== null && s.author.toLowerCase() !== c.recipient && s.assignees.some(u=>u.toLowerCase()===c.recipient);
     if (['status','status-reviewer'].includes(c.guard.kind)) {
       const owners = config.ownerRecipients.map(u=>u.toLowerCase());
-      const reviewer = s.parent !== null && s.author.toLowerCase() !== c.recipient && s.assignees.some(u=>u.toLowerCase()===c.recipient);
       if (s.status === 'needs-author' && s.author.toLowerCase() !== c.recipient) return false;
       if (s.status === 'needs-owner' && !owners.includes(c.recipient)) return false;
       if (s.status === 'in-review' && !owners.includes(c.recipient) && !reviewer) return false;
     }
-    if (['lgtm','no-lgtm','revision'].includes(c.guard.kind) && !config.ownerRecipients.includes(c.recipient)) return false;
+    // lgtm news is for the run's author; a cleared lgtm is for the reviewers still assigned.
+    if (['lgtm_added','lgtm_withdrawn'].includes(c.key) && s.author.toLowerCase() !== c.recipient) return false;
+    if (c.key === 'lgtm_invalidated_by_revision' && !reviewer) return false;
     if (c.guard.revision && s.prsKnown === false) throw new Error('无法核实待审版本，保留通知待重试');
     return stillValid(c, s);
   };
