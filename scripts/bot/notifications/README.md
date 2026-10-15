@@ -102,6 +102,24 @@ run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控�
 
 ## 状态和送达契约
 
+### 直接发送模式下不起作用的
+
+生产用的直接发送只看本次事件处理前后的快照，不保存上一次运行的任何记录。下面这些因此不生效；开关设成 true 也一样：
+
+| 项目 | 直接模式下的实际表现 | 原因 |
+|---|---|---|
+| `execution_resumed_after_handoff` | 永远不发 | 要知道"交接期间依赖已经解除"，这个记录在上一次运行里 |
+| `review_requested_for_new_revision` | 永远不发；重新请求审查一律按 `review_requested_again_same_revision` 发出 | 比较版本要用上一次请求审查时的 PR head，本次前后快照的 head 相同 |
+| `parent_summary_invalidated_by_run_reopen` | 会发，但不核对之前是否真的提醒过 parent 作者收尾 | "已发过收尾提醒"属于历史记录 |
+| 定时同步补转的 preflight | 不发 `preflight_promoted` | 定时同步和手动 resync 不经过通知观察，只有 issue 事件和带斜杠命令的评论会经过 |
+| 网页上直接改依赖（不用 `/depend`、`/undepend`） | `blocker_added`、`blocker_replaced`、`last_blocker_removed` 不发 | 原生依赖编辑不触发 bot 事件 |
+| 发送失败 | 只记日志，不补发 | 没有待发队列 |
+| 跨运行去重 | 同一事件重复投递时可能发两次 | 没有已送达记录 |
+| 旧请求过时 | 只在同一次运行内复核；之后被新请求替代的旧交接不会撤回 | 请求代次（`handoffId`）只存在持久状态里 |
+| PR 合并、关闭、引用撤回 | 不发 | 这三项已停用，由合并人在 issue 上打 `status:needs-author` 交接 |
+
+需要这些能力时，用显式 `--state-file` 的持久模式（见下文"状态和送达契约"）。
+
 ### 直接发送的覆盖边界
 
 九种进入 needs-owner/in-review/needs-author 的不同状态转移均覆盖；对角线及退回 none 的七格固定静默。创建使用 initialStatus，不能混用 none→目标状态开关。同状态明确请求使用对应事件开关，不能把普通评论当新请求。配置仅决定是否允许通知，仍须满足真实事件、权限、角色和自通知条件。
@@ -131,7 +149,7 @@ run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控�
 | blocker_replaced | 仍被阻塞时增加/更换依赖，影响 active run |
 | issue_reopened | 普通事项合法重开且当前无交接/依赖等待，恢复实际执行 |
 | run_reopened | parent open，执行任务合法重开且当前无交接/依赖等待 |
-| parent_summary_invalidated_by_run_reopen | 需要此前已发收尾记录；直接模式不保证，持久模式可判定 |
+| parent_summary_invalidated_by_run_reopen | 直接模式下运行重开且 parent 没有其他开着的运行就发，不核对之前是否发过收尾提醒；持久模式可核对 |
 | run_reopened_with_closed_parent | 执行任务重开，但 parent 已关闭；只提醒收尾 |
 | last_run_closed | 最后 active run 关闭，parent open 且无交接/依赖等待；提醒汇总，不自动宣告完成 |
 | parent_closed_with_open_runs | parent 合法关闭，提醒未关闭 run 的作者收尾 |
