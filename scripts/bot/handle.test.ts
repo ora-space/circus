@@ -417,6 +417,28 @@ test('scheduled and manual runs resync every open non-run issue', () => {
   assert.deepEqual(f.log, []);
 });
 
+test('scheduled resync promotes preflights an event run missed, with or without a board', () => {
+  for (const b of [fakeBoard(), undefined]) {
+    const f = fakeGitHub();
+    f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1 (preflight)', labels: [{ name: 'preflight' }] });
+    f.add({ number: 3, state: 'closed' });
+    f.gh.addBlockedBy(1, 1003);
+    f.add({ number: 4 });
+    f.add({ number: 5, user: { login: 'bob' }, body: 'Parent: #4 (preflight)', labels: [{ name: 'preflight' }] });
+    f.add({ number: 6 });
+    f.gh.addBlockedBy(4, 1006);
+    f.log.length = 0;
+    handle({ name: 'schedule', payload: {} }, f.gh, b?.board);
+    assert.equal(f.log[0], '#2 labels run');
+    assert.match(f.log[1], /^#2 comment @bob #1 的依赖都已关闭/);
+    assert.equal(f.log.length, 2);
+    if (b) assert.deepEqual(b.synced, ['I_1 Running', 'I_4 Preflight', 'I_6 Open']);
+    f.log.length = 0;
+    handle({ name: 'schedule', payload: {} }, f.gh, b?.board);
+    assert.deepEqual(f.log, []);
+  }
+});
+
 // Dependencies: #1 is the issue under test, #2 and #3 are blockers.
 test('opened: 依赖 lines become dependencies; bad references are reported', () => {
   const f = fakeGitHub({ body: '依赖：#2 #3 #1 #99' });

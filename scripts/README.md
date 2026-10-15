@@ -92,7 +92,7 @@ parent 还在等未关闭的依赖，但要先开发、先提 PR 时，用 `node
 
 - bot 打 `preflight`，不打 `run`，两者互斥；其余和普通运行 issue 一样（子 issue、assignee、review）。parent 没有未关闭的依赖时，bot 按普通运行打 `run`。
 - 可以开发、提 PR、请人 review；owner 的 `brief` 标出 parent 还在等哪些依赖，看板上 parent 显示为 Preflight 而不是 Blocked。合并仍由 owner 判断，一般等依赖关闭。
-- parent 的依赖全部关闭（或被 `/undepend` 移除）时，bot 把 `preflight` 换成 `run`，提醒作者对照结论核对 PR：有出入先改，改完重新打 `status:in-review`。
+- parent 的依赖全部关闭（或被 `/undepend` 移除）时，bot 在同一次处理里把 `preflight` 换成 `run`（漏掉的由每天的定时同步补上），提醒作者对照结论核对 PR：有出入先改，改完重新打 `status:in-review`。
 - 不要在 preflight 里替依赖做决定：它只是先把实现做出来，决策照样在依赖的 issue 里由 owner 拍板。parent 必须是未关闭的普通 issue，不能是另一个运行 issue，也不能是 `type:decision`（决策由 owner 在 issue 里拍板，不开运行）；不合法时 bot 在运行 issue 里提示，不打 label、不挂子 issue。parent 的 label 仍由 parent 的作者或 owner 决定，运行 issue 的作者只在自己的运行 issue 里汇报。
 
 ## 依赖和总事项
@@ -254,7 +254,7 @@ Priority 字段来自 `priority:*`。owner 的 `brief` 已经列出所有人在�
 | issue 关闭 | 正文不以 `## 总结` 开头，或不是作者关闭、总结第一行又没写代关理由，就重新打开并留言；有总结时移除 `status:*` 和 `review:*`、同步看板为 Done，通知依赖它的 issue 并重新同步它们，依赖都已关闭的 issue 下的 `preflight` 换成 `run`；运行 issue 把总结评论到 parent，并重新同步 parent |
 | issue 重新打开 | 同步看板，连同依赖它的 issue（运行 issue 同步它的 parent） |
 | circus 的 PR 合并 | 在 PR 描述里 `Refs` / `Fixes` 等指向的未关闭 issue 下 @ 作者，提醒总结后关闭（`pull_request_target`，只运行 main 上的代码） |
-| 每天定时 / 在 Actions 页面手动触发 | 全量同步所有未关闭的 issue 到看板 |
+| 每天定时 / 在 Actions 页面手动触发 | 遍历所有未关闭的 issue：依赖都已关闭的，把其下未关闭的 `preflight` 换成 `run`（补上事件处理时漏掉的）；再全量同步到看板 |
 | 新评论 | 执行其中的斜杠命令（见权限表和"review 运行 issue"），同步看板；发出者不是作者时查一次仓库权限 |
 
 ## 开发

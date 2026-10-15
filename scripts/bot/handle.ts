@@ -247,11 +247,12 @@ function notifyDependents(gh: GitHub, blocker: Issue): number[] {
 }
 
 // Once the parent waits on nothing, its open preflight runs become ordinary runs.
+// Idempotent, so the scheduled resync repeats it to repair a promotion an event run missed.
 function promotePreflights(gh: GitHub, parent: number): void {
-  if (openRefs(gh.blockedBy(parent)).length) return;
-  for (const run of gh.subIssues(parent)) {
+  const preflights = gh.subIssues(parent).filter((i) => i.state === 'open' && names(i).includes(PREFLIGHT_LABEL));
+  if (!preflights.length || openRefs(gh.blockedBy(parent)).length) return;
+  for (const run of preflights) {
     const current = names(run);
-    if (run.state !== 'open' || !current.includes(PREFLIGHT_LABEL)) continue;
     gh.setLabels(run.number, applyLabels(current.filter((l) => l !== PREFLIGHT_LABEL), [RUN_LABEL], []));
     gh.comment(
       run.number,
@@ -269,8 +270,9 @@ function syncBoard(gh: GitHub, board: Board, item: Issue): void {
   board.sync(item.node_id, boardValues(item, runs.length, item.issue_dependencies_summary?.blocked_by ?? 0, preflights));
 }
 
-// Scheduled and manual workflow runs resync every open issue, which also undoes edits
-// made on the board by hand and refills values cleared by a Status options change.
+// Scheduled and manual workflow runs resync every open issue: they promote preflights an
+// event run missed, undo edits made on the board by hand and refill values cleared by a
+// Status options change.
 const RESYNC_EVENTS = ['schedule', 'workflow_dispatch'];
 
 // Issues a PR body points at with "Refs/Fixes/Closes/Resolves #N" (or owner/repo#N for this repository).
@@ -305,7 +307,11 @@ function remindAuthors(gh: GitHub, payload: any): void {
 export function handle(event: Event, gh: GitHub, board?: Board): void {
   if (event.name === 'pull_request_target') return remindAuthors(gh, event.payload);
   if (RESYNC_EVENTS.includes(event.name)) {
-    if (board) for (const item of gh.listOpenIssues()) syncBoard(gh, board, item);
+    for (const item of gh.listOpenIssues()) {
+      if (item.pull_request || parentOf(item.body) !== null) continue;
+      promotePreflights(gh, item.number);
+      if (board) syncBoard(gh, board, gh.getIssue(item.number));
+    }
     return;
   }
   const touched = dispatch(event, gh);
