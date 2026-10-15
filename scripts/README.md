@@ -74,7 +74,6 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 `type:decision` 不开运行，没有可以分出去的一块，所以决策 issue 的 assignee 相当于 reviewer：被 assign 的人审决策材料、在 issue 里提意见，不负责推进，也不替作者改方案、写结论。推进决策的始终是作者，拍板的是 owner。所以不要轻易 assign：
 
-- 只是想听某人的意见，在评论里 @ 对方即可，不用 assign。
 - 想让某人做调研、写 ADR 或实现，开一个依赖该决策的 task issue（或者用已有的），在那里 assign 对方，由对方开运行（决策关闭前开 preflight）。
 - agent 在决策 issue 上发 `/assign` 之前，先向用户说明 assignee 在这里是 reviewer，用户确认后再发。
 
