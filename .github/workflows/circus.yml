@@ -54,6 +54,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CIRCUS_NOTIFICATIONS_ENABLED: ${{ vars.CIRCUS_NOTIFICATIONS_ENABLED }}
+          CIRCUS_OWNER_RECIPIENTS: ${{ vars.CIRCUS_OWNER_RECIPIENTS }}
           FEISHU_APP_ID: ${{ vars.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           FEISHU_RECIPIENTS_JSON: ${{ vars.FEISHU_RECIPIENTS_JSON }}

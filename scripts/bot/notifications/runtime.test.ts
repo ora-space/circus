@@ -21,3 +21,12 @@ test('production kill switch needs no credentials and rejects ambiguous values',
   f.ctx.env.CIRCUS_NOTIFICATIONS_ENABLED = 'yes';
   assert.throws(() => runtime(f.ctx, {}), /必须为 true 或 false/);
 });
+
+test('owner recipients come from a repository variable when set, overriding the JSON list', () => {
+  const f = fakeContext(undefined, { root: resolve('.'), env: { CIRCUS_OWNER_RECIPIENTS: 'EricWvi, alice  bob,alice' } });
+  assert.deepEqual(runtime(f.ctx, {}).config.ownerRecipients, ['ericwvi', 'alice', 'bob']);
+  f.ctx.env.CIRCUS_OWNER_RECIPIENTS = '';
+  assert.deepEqual(runtime(f.ctx, {}).config.ownerRecipients, []);
+  f.ctx.env.CIRCUS_OWNER_RECIPIENTS = 'ok, not/valid';
+  assert.throws(() => runtime(f.ctx, {}), /CIRCUS_OWNER_RECIPIENTS/);
+});

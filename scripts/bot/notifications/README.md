@@ -8,7 +8,7 @@
 |---|---|---|
 | `enabled` | false | 总开关 |
 | `transport` | feishu-app | 应用私聊；不实现群 webhook |
-| `ownerRecipients` | [] | 接收决策/审查通知的 owner GitHub login，不授予权限 |
+| `ownerRecipients` | [] | 接收决策/审查通知的 owner GitHub login，不授予权限；生产用 Actions Variable `CIRCUS_OWNER_RECIPIENTS` 覆盖 |
 | `initialStatus` | 见下表 | 创建时初始交接，独立于后续转移 |
 | `statusTransitions` | 见矩阵 | open issue 具体前后状态 |
 | `events` | 见事件表 | 26 个协作事件；3 个 PR 状态旧字段保留但停用 |

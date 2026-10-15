@@ -15,6 +15,13 @@ export function runtime(ctx: Context, options: { config?: string; credentials?: 
     if (!['true', 'false'].includes(enabled)) throw new Error('CIRCUS_NOTIFICATIONS_ENABLED 必须为 true 或 false');
     config.enabled = enabled === 'true';
   }
+  // Owner logins come from a repository variable too, so changing who receives owner notices needs no PR.
+  const owners = ctx.env.CIRCUS_OWNER_RECIPIENTS?.trim();
+  if (owners) {
+    const logins = owners.split(/[\s,]+/).filter(Boolean);
+    if (logins.some(x => !/^[\w-]+$/.test(x))) throw new Error('CIRCUS_OWNER_RECIPIENTS 必须是用逗号或空格分隔的 GitHub login');
+    config.ownerRecipients = [...new Set(logins.map(x => x.toLowerCase()))];
+  }
   if (!config.enabled) return { config };
   if (config.transport !== 'feishu-app') throw new Error('本次实现仅支持 feishu-app；群 webhook 尚未实现，不能启用');
   const credentials = options.credentials ? readJson(options.credentials) as { app_id: string; app_secret: string }

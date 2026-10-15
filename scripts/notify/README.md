@@ -88,10 +88,11 @@ https://github.com/ora-space/circus/issues/95#issuecomment-...
 | `FEISHU_APP_ID` | Variables | 飞书 App ID 原文，不包 JSON、不加引号 |
 | `FEISHU_APP_SECRET` | Secrets | 飞书 App Secret 原文，不包 JSON、不加引号 |
 | `FEISHU_RECIPIENTS_JSON` | Variables | 上述 GitHub login → mobile/open_id 映射的完整 JSON 对象 |
+| `CIRCUS_OWNER_RECIPIENTS` | Variables | 接收 owner 通知的 GitHub login，逗号或空格分隔，如 `EricWvi`；设置后覆盖 JSON 的 `ownerRecipients` |
 
 这些值与 GitHub App 的 `CIRCUS_APP_ID`、`CIRCUS_APP_PRIVATE_KEY` 不同；不保存 tenant_access_token。设置入口为 upstream 仓库 Settings → Secrets and variables → Actions。
 
-合并代码并填好配置后，在 Repository Variables 设置 `CIRCUS_NOTIFICATIONS_ENABLED=true` 开启生产通知，`false` 立即关闭后续运行。这个部署开关覆盖 JSON 的 enabled；未设置或为空时使用 JSON 值。其他逐项开关、渠道、ownerRecipients 仍按仓库配置，不从事件 payload 接受覆盖。ownerRecipients 是实际要接收 owner 通知的 GitHub login；个人映射不授予权限，名单为空时仍能发送作者/协作者通知。
+合并代码并填好配置后，在 Repository Variables 设置 `CIRCUS_NOTIFICATIONS_ENABLED=true` 开启生产通知，`false` 立即关闭后续运行。这个部署开关覆盖 JSON 的 enabled；未设置或为空时使用 JSON 值。`CIRCUS_OWNER_RECIPIENTS` 同理覆盖 JSON 的 ownerRecipients，未设置或为空时使用 JSON 值。其他逐项开关和渠道仍按仓库配置，不从事件 payload 接受覆盖。ownerRecipients 是实际要接收 owner 通知的 GitHub login，每人都要在 `FEISHU_RECIPIENTS_JSON` 里有映射；个人映射不授予权限，名单为空时仍能发送作者/协作者通知。
 
 合并前可由有权限的人把已审查的 PR head 放到 upstream 测试分支，再通过现有 circus workflow 的 workflow_dispatch 指定该分支、notification_test=true、notification_recipient=本人 login。此入口使用该仓库实际 Variables/Secret，跳过 GitHub App token 和业务写入步骤，仅模拟“等待审查→等待作者跟进”并真实发送一条私聊，同时检查自通知/关闭状态对静默；发送失败则测试失败。不能直接用 upstream dispatch 指向 fork 分支；普通 PR 测试也不能读取 upstream Secret。
 
