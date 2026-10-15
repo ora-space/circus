@@ -75,6 +75,8 @@ node scripts/notify/smoke.ts --config-file .tmp/notifications.local.json --crede
 https://github.com/ora-space/circus/issues/95
 查看相关交接：
 https://github.com/ora-space/circus/issues/95#issuecomment-...
+
+注：本通知反映发送时的状态，之后可能已有新的回复或状态变化；动手前先看 #95 的最新评论和状态，以 issue 为准。
 ```
 
 同次合并消息会去重描述和动作；参与邀请与审查请求同时发生时只保留审查动作；重新请求审查清掉了 reviewer 自己的 lgtm 时只说认可已失效、请重新审查。依赖关闭与仅移除依赖关系用不同措辞，不把“关闭/解除依赖”写成“工作完成”，因为关闭也可能表示事项取消。请求审查新版本不等于请求人提交了这个版本，正文不猜测提交者或回复内容。

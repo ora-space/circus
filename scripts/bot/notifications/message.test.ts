@@ -107,3 +107,8 @@ test('a request that cleared the reviewer\'s lgtm reads as one re-review, not tw
   assert.equal(text.match(/^• /gm)!.length, 2); // one change, one action
   assert.match(text, /按 PR 当前的 head 重新审/);
 });
+
+test('every notice ends by saying it may be out of date and the issue decides', () => {
+  const text = formatMessage(state({ number: 104, status: 'needs-author' }), [candidate('statusTransitions.in-review->needs-author', 'needs-author')]);
+  assert.match(text, /\n\n注：本通知反映发送时的状态，之后可能已有新的回复或状态变化；动手前先看 #104 的最新评论和状态，以 issue 为准。$/);
+});

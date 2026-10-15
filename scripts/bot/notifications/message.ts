@@ -161,6 +161,8 @@ export function formatMessage(snapshot: Snapshot, candidates: Candidate[]): stri
     '发生了什么', ...unique(details.map(n => spaced(n.change))).map(s => `• ${s}`), '',
     '你需要做', ...unique(selected.map((c, i) => (nextStep(c, snapshot.number) ?? details[i].action).replace(/ (?=[。；，])/g, ''))).map(s => `• ${s}`), '',
     '查看事项：', snapshot.url,
-    ...(urls.length ? ['查看相关交接：', ...urls] : []),
+    ...(urls.length ? ['查看相关交接：', ...urls] : []), '',
+    // Notices are not retracted when things move on; the issue is the source of truth.
+    `注：本通知反映发送时的状态，之后可能已有新的回复或状态变化；动手前先看 #${snapshot.number} 的最新评论和状态，以 issue 为准。`,
   ].join('\n');
 }
