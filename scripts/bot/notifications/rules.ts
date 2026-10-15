@@ -42,7 +42,7 @@ export function candidates(before: Snapshot | undefined, after: Snapshot, cause:
     for (const recipient of canonical(users).filter(u => u !== cause.actor.toLowerCase())) {
       const actualGuard = guard.kind === 'status' && after.status === 'in-review' && after.parent !== null && !config.ownerRecipients.includes(recipient)
         ? { ...guard, kind: 'status-reviewer' } : guard;
-      out.push({ key, issue: after.number, recipient, reason, guard: actualGuard, actor: cause.actor.toLowerCase(),
+      out.push({ key, issue: after.number, recipient, reason, guard: actualGuard, actor: cause.actor, // Original case for display; Feishu lookups ignore case.
         source: cause.id, url: cause.sourceUrl ?? (cause.issue !== undefined && cause.issue !== after.number
           ? after.url.replace(/\/issues\/\d+$/, `/issues/${cause.issue}`) : after.url), title: after.title,
         context: { parent: after.parent,
