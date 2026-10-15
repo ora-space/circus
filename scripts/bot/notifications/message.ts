@@ -40,14 +40,6 @@ const statusNames: Record<string, string> = {
 };
 const request = (status: string, actor: string) => status === 'in-review' ? `${actor}需要你 review 当前交付。`
   : status === 'needs-owner' ? `${actor}需要你给出意见或决策。` : `${actor}需要你继续处理此事项。`;
-const transitionActions: Record<string, string> = {
-  'needs-owner->in-review': '查看本轮交接说明及交付内容，在 GitHub 回复审查意见。',
-  'needs-author->in-review': '查看本轮处理结果及当前交付，在 GitHub 回复审查意见。',
-  'in-review->needs-owner': '查看本轮审查相关的待决请求，在事项中回复决定。',
-  'needs-author->needs-owner': '查看本轮跟进后的待决请求，在事项中回复意见或决定。',
-  'in-review->needs-author': '查看本轮交接说明或审查意见，处理需要修改或回复的内容。',
-  'needs-owner->needs-author': '查看本轮交接结论或要求，继续处理并反馈结果。',
-};
 function notice(c: Candidate): Notice {
   const actor = `@${line(c.actor)} `;
   if (c.key.startsWith('statusTransitions.')) {
@@ -55,8 +47,7 @@ function notice(c: Candidate): Notice {
     const [before, after] = transition.split('->');
     const base = notices[after];
     if (!base || !statusNames[before]) return fallback(c);
-    return { ...base, change: `状态由「${statusNames[before]}」变为「${statusNames[after]}」；${request(after, actor)}`,
-      action: transitionActions[transition] ?? base.action };
+    return { ...base, change: `状态由「${statusNames[before]}」变为「${statusNames[after]}」；${request(after, actor)}` };
   }
   if (c.key.startsWith('initialStatus.')) {
     const status = c.key.slice('initialStatus.'.length), base = notices[status];
@@ -98,27 +89,54 @@ function notice(c: Candidate): Notice {
 }
 const fallback = (c: Candidate): Notice => ({ heading: '需要你处理', change: line(c.reason), action: '查看事项和相关记录，确认下一步处理。' });
 
-// What an agent handed the whole message should do after reading the issue's updates. Cases the
-// protocol's "#N 有更新" already covers defer to it; the rest name the next command.
-function agentStep(c: Candidate, n: number): string {
+// The concrete next step for whoever receives the notice: a person or the agent working for them.
+// Handoffs say what to read, what to do and how to hand the issue on; other notices name the command.
+const comment = (n: number, cmd: string) => `在 #${n} 评论 \`${cmd}\` `;
+function nextStep(c: Candidate, n: number): string | undefined {
+  const target = c.key.startsWith('statusTransitions.') ? c.key.split('->')[1]
+    : c.key.startsWith('initialStatus.') ? c.key.slice('initialStatus.'.length)
+    : c.key === 'owner_request_updated' ? 'needs-owner' : c.key === 'author_request_updated' ? 'needs-author'
+    : c.key.startsWith('review_requested_') || c.key === 'reviewer_assigned_during_review' || c.key === 'lgtm_invalidated_by_revision' ? 'in-review'
+    : undefined;
+  const reviewer = c.guard.kind === 'status-reviewer' || c.key === 'reviewer_assigned_during_review' || c.key === 'lgtm_invalidated_by_revision';
+  if (target === 'needs-author') {
+    return `看 #${n} 里最新的交接评论，按要求修改或回复；处理完${comment(n, '/label status:in-review')}请人复审，需要 owner 再定就${comment(n, '/label status:needs-owner')}。`;
+  }
+  if (target === 'needs-owner') return `看 #${n} 的待决问题和选项，在 #${n} 写下结论，再${comment(n, '/label status:needs-author')}交回作者。`;
+  if (target === 'in-review' && reviewer) {
+    return `${c.key === 'lgtm_invalidated_by_revision' ? '按 PR 当前的 head 重新审' : `审 #${n} 关联的 PR`}：在 PR 上 Approve 或 Request changes，`
+      + `再${comment(n, '/label review:lgtm')}并写明审过的 commit SHA，或${comment(n, '/label status:needs-author')}并写明问题。`;
+  }
+  if (target === 'in-review') {
+    return `审 #${n} 关联的 PR，决定是否合并：合并只合 PR、不关 issue，合并后${comment(n, '/label status:needs-author')}让作者收尾；需要修改也这样交回，并写明要求。`;
+  }
   switch (c.key) {
     case 'participant_assigned':
-      return `确认分给你的那一块，用 \`node scripts/cli.ts run ${n}\` 开运行 issue 开始做，过程和 PR 都在运行 issue 里汇报。`;
-    case 'preflight_promoted':
-      return `读依赖 issue 的总结，对照结论核对本运行的 PR：需要改就改完 push，再 \`node scripts/cli.ts label ${n} +status:in-review\` 请人复审；不用改就在 #${n} 评论说明。`;
+      return `读 #${n}，确认分给你的那一块，用 \`node scripts/cli.ts run ${n}\` 开运行 issue 开始做，进展和 PR 都写在运行 issue 里。`;
+    case 'participant_left': case 'reviewer_left_during_review':
+      return `确认剩下的工作谁来接；需要别人帮忙就${comment(n, '/assign @<login>')}。`;
+    case 'participant_removed': case 'reviewer_removed_during_review':
+      return `停下这部分工作；有还没交接的进展，在 #${n} 评论说明。`;
     case 'lgtm_added':
       return '不需要操作，等 owner 决定是否合并。';
+    case 'lgtm_withdrawn':
+      return `看 PR 上的 review 意见，修改后${comment(n, '/label status:in-review')}请人复审。`;
+    case 'preflight_promoted':
+      return `读依赖 issue 的总结，对照结论核对本运行的 PR：需要改就改完 push，再${comment(n, '/label status:in-review')}请人复审；不用改就在 #${n} 评论说明。`;
     case 'last_blocker_closed': case 'last_blocker_removed': case 'execution_resumed_after_handoff':
-      return `读已关闭依赖的总结，继续开发；还没有自己的运行 issue 就先 \`node scripts/cli.ts run ${n}\`。`;
+      return `读已解除依赖的总结，继续 #${n} 的工作；还没有自己的运行 issue 就先 \`node scripts/cli.ts run ${n}\`。`;
     case 'blocker_added': case 'blocker_reopened': case 'blocker_replaced':
-      return `读新增或重开的依赖，判断哪些工作要等它，在 #${n} 评论说明，不受影响的部分继续做。`;
+      return `读新增或重开的依赖，判断哪些工作要等它，在 #${n} 评论说明；不受影响的部分继续做。`;
+    case 'issue_reopened': case 'run_reopened':
+      return `读 #${n} 重新打开的原因，继续处理。`;
+    case 'parent_summary_invalidated_by_run_reopen':
+      return `先不要关闭 #${n}，等重开的运行结束后再汇总。`;
     case 'last_run_closed':
-      return `汇总各运行的总结，确认做完就按「关闭前先总结」关闭 #${n}；没做完就在 #${n} 说明还差什么。`;
+      return `汇总各运行的总结：确认做完就按「关闭前先总结」用 \`node scripts/cli.ts close ${n} --title <结果> --summary-file <文件>\` 关闭；没做完就在 #${n} 说明还差什么。`;
     case 'parent_closed_with_open_runs': case 'run_reopened_with_closed_parent':
-      return `parent 已关闭：为本运行写总结，用 \`node scripts/cli.ts close ${n} --title <结果> --summary-file <文件>\` 关闭。`;
-    default:
-      return 'AGENTS.md「"#N 有更新"」继续处理。';
+      return `为本运行写总结，用 \`node scripts/cli.ts close ${n} --title <结果> --summary-file <文件>\` 关闭。`;
   }
+  return undefined;
 }
 
 export function formatMessage(snapshot: Snapshot, candidates: Candidate[]): string {
@@ -141,11 +159,8 @@ export function formatMessage(snapshot: Snapshot, candidates: Candidate[]): stri
     `${snapshot.parent === null ? '事项' : '执行任务'}：#${snapshot.number} ${line(snapshot.title).slice(0, 200)}`,
     `当前状态：${status}`, '',
     '发生了什么', ...unique(details.map(n => spaced(n.change))).map(s => `• ${s}`), '',
-    '你需要做', ...unique(details.map(n => n.action)).map(s => `• ${s}`), '',
+    '你需要做', ...unique(selected.map((c, i) => (nextStep(c, snapshot.number) ?? details[i].action).replace(/ (?=[。；，])/g, ''))).map(s => `• ${s}`), '',
     '查看事项：', snapshot.url,
-    ...(urls.length ? ['查看相关交接：', ...urls] : []), '',
-    '交给 agent',
-    ...unique(selected.map(c => agentStep(c, snapshot.number))).map(step =>
-      `• 在 circus 目录运行 \`node scripts/cli.ts updates ${snapshot.number}\` 查看 ora-space/circus#${snapshot.number} 的最新动静，然后${step.startsWith('AGENTS') ? '按 ' : ''}${step}`),
+    ...(urls.length ? ['查看相关交接：', ...urls] : []),
   ].join('\n');
 }

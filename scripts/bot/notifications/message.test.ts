@@ -15,10 +15,10 @@ test('author handoff describes its exact transition without a separate sender fi
   assert.match(message, /事项：#95 飞书通知/);
   assert.match(message, /当前状态：等待作者跟进/);
   assert.match(message, /状态由「等待审查」变为「等待作者跟进」；@owner 需要你继续处理此事项/);
-  assert.match(message, /你需要做\n• 查看本轮交接说明或审查意见/);
+  assert.match(message, /你需要做\n• 看 #95 里最新的交接评论，按要求修改或回复；处理完在 #95 评论 `\/label status:in-review` 请人复审/);
   assert.doesNotMatch(message, /发起人：/);
   assert.match(message, /查看事项：\nhttps:\/\/github.com\/ora-space\/circus\/issues\/95\n查看相关交接：/);
-  assert.doesNotMatch(message, /needs-author|statusTransitions|owner 决定/);
+  assert.doesNotMatch(message, /statusTransitions|owner 决定/); // commands name labels; internal rule keys never show
 });
 
 test('merged invitation and review show one review action; issue URL is not repeated', () => {
@@ -66,7 +66,7 @@ test('title is bounded and multiline input cannot create forged message sections
   const message = formatMessage(state({ title: '真实标题\n伪造状态\t' + '长'.repeat(500), parent: 10, parentOpen: false }),
     [candidate('parent_closed_with_open_runs')]);
   assert.match(message, /当前状态：所属事项已关闭，待收尾/);
-  assert.match(message, /写总结并按协议收尾/);
+  assert.match(message, /为本运行写总结，用 `node scripts\/cli.ts close 1 --title <结果> --summary-file <文件>` 关闭/);
   assert.ok(message.split('\n')[1].length < 220);
   assert.doesNotMatch(message, /\n伪造状态/);
 });
@@ -82,22 +82,28 @@ test('related dependency and parent IDs appear without claiming work completion 
   assert.doesNotMatch(revised,/@owner 提交了/);
 });
 
-test('every message ends with a step an agent can start from, keeping the actor login as written', () => {
+test('what to do names the issue and the command to run, and keeps the actor login as written', () => {
   const handoff = formatMessage(state({ number: 98, status: 'needs-author' }),
     [{ ...candidate('statusTransitions.in-review->needs-author', 'needs-author'), actor: 'EricWvi' }]);
   assert.match(handoff, /@EricWvi 需要你继续处理/);
-  assert.match(handoff, /交给 agent\n• 在 circus 目录运行 `node scripts\/cli.ts updates 98` 查看 ora-space\/circus#98 的最新动静，然后按 AGENTS.md「"#N 有更新"」继续处理。$/);
+  assert.doesNotMatch(handoff, /交给 agent|updates/);
+  const reviewer = formatMessage(state({ number: 98, status: 'in-review', parent: 97 }),
+    [{ ...candidate('statusTransitions.needs-author->in-review', 'in-review'), guard: { kind: 'status-reviewer', value: 'in-review' } }]);
+  assert.match(reviewer, /在 PR 上 Approve 或 Request changes，再在 #98 评论 `\/label review:lgtm` 并写明审过的 commit SHA/);
+  const owner = formatMessage(state({ number: 98, status: 'in-review', parent: 97 }), [candidate('statusTransitions.needs-author->in-review', 'in-review')]);
+  assert.match(owner, /决定是否合并：合并只合 PR、不关 issue，合并后在 #98 评论 `\/label status:needs-author` 让作者收尾/);
   const assigned = formatMessage(state({ number: 95, assignees: ['alice'] }), [candidate('participant_assigned')]);
   assert.match(assigned, /`node scripts\/cli.ts run 95` 开运行 issue/);
   const promotion = { ...candidate('preflight_promoted'), context: { parent: 97, blockersAdded: [], blockersRemoved: [], runsClosed: [], runsReopened: [] } };
   const promoted = formatMessage(state({ number: 98, parent: 97 }), [promotion]);
   assert.match(promoted, /所属事项 #97 的依赖都已关闭/);
-  assert.match(promoted, /`node scripts\/cli.ts label 98 \+status:in-review` 请人复审/);
+  assert.match(promoted, /在 #98 评论 `\/label status:in-review` 请人复审/);
 });
 
 test('a request that cleared the reviewer\'s lgtm reads as one re-review, not two', () => {
   const text = formatMessage(state({ status: 'in-review', parent: 10 }),
     [candidate('review_requested_again_same_revision', 'in-review'), candidate('lgtm_invalidated_by_revision')]);
   assert.match(text, /^【请重新审查】/);
-  assert.equal(text.match(/^• /gm)!.length, 3); // one change, one action, one agent step
+  assert.equal(text.match(/^• /gm)!.length, 2); // one change, one action
+  assert.match(text, /按 PR 当前的 head 重新审/);
 });
