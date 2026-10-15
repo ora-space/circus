@@ -15,6 +15,15 @@ on:
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
+    inputs:
+      notification_test:
+        description: '仅验证飞书通知（模拟交接，不改 GitHub 状态）'
+        type: boolean
+        default: false
+      notification_recipient:
+        description: '测试收件人的 GitHub login（必须已映射）'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -34,15 +43,26 @@ jobs:
         with:
           node-version: 24
       - id: app
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.notification_test) }}
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ vars.CIRCUS_APP_ID }}
           private-key: ${{ secrets.CIRCUS_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
       - run: node scripts/cli.ts bot
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.notification_test) }}
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CIRCUS_NOTIFICATIONS_ENABLED: ${{ vars.CIRCUS_NOTIFICATIONS_ENABLED }}
-          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_ID: ${{ vars.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
-          FEISHU_RECIPIENTS_JSON: ${{ secrets.FEISHU_RECIPIENTS_JSON }}
+          FEISHU_RECIPIENTS_JSON: ${{ vars.FEISHU_RECIPIENTS_JSON }}
+      - name: Verify direct Feishu delivery
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.notification_test }}
+        run: node scripts/notify/direct-smoke.ts
+        env:
+          NOTIFICATION_TEST_RECIPIENT: ${{ inputs.notification_recipient }}
+          CIRCUS_NOTIFICATIONS_ENABLED: ${{ vars.CIRCUS_NOTIFICATIONS_ENABLED }}
+          FEISHU_APP_ID: ${{ vars.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_RECIPIENTS_JSON: ${{ vars.FEISHU_RECIPIENTS_JSON }}
