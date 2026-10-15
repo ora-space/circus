@@ -1,7 +1,7 @@
 import { handle, referencedIssues, type Event } from '../handle.ts';
 import type { GitHub, Issue } from '../github.ts';
 import type { Board } from '../../lib/board.ts';
-import { parentOf } from '../../lib/run.ts';
+import { parentOf, PREFLIGHT_LABEL } from '../../lib/run.ts';
 import { hasSummary, closedForAuthor, splitSummary } from '../../lib/summary.ts';
 import { parseSlash } from '../../lib/slash.ts';
 import type { NotificationConfig, Status } from './config.ts';
@@ -22,8 +22,9 @@ export function snapshot(gh: GitHub, repo: string, n: number, pulls?: (n: number
     open: issue.state === 'open', status,
     assignees: issue.assignees.map(a => a.login), parent, parentOpen: parent === null || gh.getIssue(parent).state === 'open',
     blockers: gh.blockedBy(n).filter(i => i.state === 'open').map(i => i.number).sort((a,b) => a-b),
-    runs: gh.subIssues(n).filter(i => parentOf(i.body) === n).map(i => ({ number: i.number, author: i.user.login, open: i.state === 'open' })),
-    lgtm: issue.labels.some(l => l.name === 'review:lgtm'), prs, prsKnown,
+    runs: gh.subIssues(n).filter(i => parentOf(i.body) === n).map(i => ({ number: i.number, author: i.user.login, open: i.state === 'open',
+      preflight: i.labels.some(l => l.name === PREFLIGHT_LABEL) })),
+    lgtm: issue.labels.some(l => l.name === 'review:lgtm'), preflight: issue.labels.some(l => l.name === PREFLIGHT_LABEL), prs, prsKnown,
   };
 }
 export function eventCause(event: Event): Cause {
@@ -45,7 +46,11 @@ export function relevantIssues(event: Event, gh: GitHub, repo: string): number[]
     const parent = parentOf(issue.body);
     if (parent !== null) out.add(parent);
     for (const item of gh.subIssues(n)) out.add(item.number);
-    for (const item of gh.blocking(n)) out.add(item.number);
+    // A closed blocker can turn the preflight runs of its dependents into runs.
+    for (const item of gh.blocking(n)) {
+      out.add(item.number);
+      for (const run of gh.subIssues(item.number)) out.add(run.number);
+    }
   }
   return [...out];
 }

@@ -56,3 +56,18 @@ test('business mutation errors remain failures in direct mode', async () => {
     sender(async () => {}), () => {}), /业务写入失败/);
   assert.equal(writes, 1);
 });
+
+test('closing a decision tells the author of a promoted preflight once, on the run', async () => {
+  const f = fixture({ number: 2, id: 1002, title: '定方案', user: { login: 'owner' }, labels: [{ name: 'type:decision' }] });
+  const dependent = { ...structuredClone(f.issue), number: 3, id: 1003, title: '实现', user: { login: 'alice' }, labels: [] };
+  const preflight = { ...structuredClone(f.issue), number: 4, id: 1004, title: '运行：实现', user: { login: 'worker' },
+    body: 'Parent: #3 (preflight)', labels: [{ name: 'preflight' }, { name: 'status:in-review' }] };
+  f.items.set(3, dependent); f.items.set(4, preflight); f.dependencies.set(3, [2]);
+  f.issue.state = 'closed'; f.issue.body = '## 总结\n\n选 A';
+  const sent: { to: string; text: string }[] = [];
+  await deliverEvent({ name: 'issues', payload: { action: 'closed', issue: structuredClone(f.issue), sender: { login: 'owner', type: 'User' } } },
+    f.gh, 'ora-space/circus', config(), { hasRecipient: () => true, identity: async u => u, send: async (to, text) => { sent.push({ to, text }); } }, () => {});
+  assert.deepEqual(f.items.get(4)!.labels.map(l => l.name), ['status:in-review', 'run']);
+  assert.deepEqual(sent.map(m => m.to), ['worker']);
+  assert.match(sent[0].text, /#4 运行：实现[\s\S]*由 preflight 转为正式执行/);
+});

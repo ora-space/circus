@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import type { NotificationConfig, Status } from './config.ts';
 
-export interface Run { number: number; author: string; open: boolean }
+export interface Run { number: number; author: string; open: boolean; preflight?: boolean }
 export interface Pull { key: string; sha: string; state: 'open' | 'merged' | 'closed'; url: string }
 export interface Snapshot {
   number: number; title: string; url: string; author: string; open: boolean; status: Status; assignees: string[];
   parent: number | null; parentOpen: boolean; blockers: number[]; runs: Run[]; lgtm: boolean; prs: Pull[];
+  preflight?: boolean; // A run started before its parent's dependencies closed; absent in older stored snapshots.
   handoffId?: string; // Local request generation, including requests whose notification switch is off.
   prsKnown?: boolean;
   reviewVersion?: string; // Version at the last explicit review request, not the last polling snapshot.
@@ -109,8 +110,14 @@ export function candidates(before: Snapshot | undefined, after: Snapshot, cause:
       add('lgtm_invalidated_by_revision', reviewers(after), '作者重新请求审查，旧审查认可已失效', { kind: 'no-lgtm' });
     }
   }
+  if (after.parent !== null && before.preflight && !after.preflight) {
+    add('preflight_promoted', [after.author], 'parent 的依赖都已关闭，preflight 已转为 run', { kind: 'promoted' });
+  }
   if (before.blockers.length && !after.blockers.length && after.status === 'none') {
-    add(cause.kind === 'closed' ? 'last_blocker_closed' : 'last_blocker_removed', executors(after),
+    // Authors of promoted preflights hear it from preflight_promoted on their run instead.
+    const promoted = config.events.preflight_promoted
+      ? before.runs.filter(r => r.open && r.preflight).map(r => r.author.toLowerCase()) : [];
+    add(cause.kind === 'closed' ? 'last_blocker_closed' : 'last_blocker_removed', executors(after).filter(u => !promoted.includes(u.toLowerCase())),
       '最后一个未完成依赖已解除，请确认恢复执行', { kind: 'ready' });
   } else if (!after.blockers.length && before.status !== 'none' && after.status === 'none') {
     // Only resume when a prior blocking wait exists, supplied by persisted history.
@@ -153,6 +160,7 @@ export function stillValid(c: Candidate, s: Snapshot): boolean {
     case 'blocked': return s.blockers.length > 0 && active(s).some(r => r.author.toLowerCase() === c.recipient);
     case 'summary': return s.status === 'none' && !s.blockers.length && !active(s).length;
     case 'runs-open': return active(s).length > 0;
+    case 'promoted': return !s.preflight;
     case 'closed-parent': return !s.parentOpen;
     case 'pr': return s.prs.some(p => `${p.key}:${p.state}` === c.guard.value);
     case 'pr-removed': return !s.prs.some(p => p.key === c.guard.value);

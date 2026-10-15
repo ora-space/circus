@@ -11,7 +11,7 @@
 | `ownerRecipients` | [] | 接收决策/审查通知的 owner GitHub login，不授予权限 |
 | `initialStatus` | 见下表 | 创建时初始交接，独立于后续转移 |
 | `statusTransitions` | 见矩阵 | open issue 具体前后状态 |
-| `events` | 见事件表 | 25 个协作事件；3 个 PR 状态旧字段保留但停用 |
+| `events` | 见事件表 | 26 个协作事件；3 个 PR 状态旧字段保留但停用 |
 
 将单项改为 false 即关闭，缺项也关闭；不提供通配符和旧8类聚合开关。读取器须拒绝未知字段/事件/状态对、错误类型和未支持渠道；启用时验证 owner 名单、凭据及映射。设置经 PR 修改。
 
@@ -75,6 +75,7 @@
 | `run_reopened_with_closed_parent` | 开 | run作者 | parent closed，run重开需收尾 |
 | `last_run_closed` | 开 | parent作者 | 最后run结束；parent open、无阻塞且无其他交接，可汇总 |
 | `parent_closed_with_open_runs` | 开 | 未结束run作者 | parent合法关闭，运行需收尾 |
+| `preflight_promoted` | 开 | 运行作者 | parent的依赖都已关闭，preflight转为run，需按结论核对PR；同一次依赖关闭不再给该作者发`last_blocker_*` |
 | `pr_merged` | 关（停用） | — | 合并人通过 issue 标签交接，不直接监听 PR 合并通知 |
 | `review_pr_closed_without_merge` | 关（停用） | — | 有新处理动作时通过 issue 标签表达 |
 | `review_pr_reference_removed` | 关（停用） | — | 有新处理动作时通过 issue 标签表达 |
@@ -105,7 +106,7 @@ run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控�
 
 九种进入 needs-owner/in-review/needs-author 的不同状态转移均覆盖；对角线及退回 none 的七格固定静默。创建使用 initialStatus，不能混用 none→目标状态开关。同状态明确请求使用对应事件开关，不能把普通评论当新请求。配置仅决定是否允许通知，仍须满足真实事件、权限、角色和自通知条件。
 
-下表列明全部 25 个事件的证据要求。直接发送只拥有本次前后快照；“需要历史”的项目不能仅因为开关 true 就保证生产触发，不为补齐表格猜测历史或广播。
+下表列明全部 26 个事件的证据要求。直接发送只拥有本次前后快照；“需要历史”的项目不能仅因为开关 true 就保证生产触发，不为补齐表格猜测历史或广播。
 
 | 事件键 | 直接发送的条件/边界 |
 |---|---|
@@ -134,6 +135,7 @@ run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控�
 | run_reopened_with_closed_parent | 执行任务重开，但 parent 已关闭；只提醒收尾 |
 | last_run_closed | 最后 active run 关闭，parent open 且无交接/依赖等待；提醒汇总，不自动宣告完成 |
 | parent_closed_with_open_runs | parent 合法关闭，提醒未关闭 run 的作者收尾 |
+| preflight_promoted | 依赖关闭或移除使 preflight 在同一次处理中转为 run，提醒运行作者核对；定时同步补转的不通知 |
 
 PR 合并/关闭/引用撤回的三个旧字段仍停用。不扩展第三方 Bot 或原生依赖编辑实时入口；当前生产入口是人的合法协议命令和事项生命周期事件。补发及跨运行去重不属于直接模式的可靠性承诺。
 

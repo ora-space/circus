@@ -26,6 +26,7 @@ const scenarios: Scenario[] = [
   { key:'lgtm_added', before:reviewedRun, after:{...reviewedRun,lgtm:true}, actor:'bob', recipients:['alice'] },
   { key:'lgtm_withdrawn', before:{...reviewedRun,lgtm:true}, after:reviewedRun, actor:'bob', recipients:['alice'] },
   { key:'lgtm_invalidated_by_revision', before:{...reviewedRun,lgtm:true}, after:{...reviewedRun,prs:[{...pr,sha:'new'}]}, actor:'alice', requests:['status:in-review'], recipients:['bob'] },
+  { key:'preflight_promoted', before:run({status:'none',preflight:true}), after:run({status:'none'}), kind:'closed', recipients:['alice'] },
   { key:'last_blocker_closed', before:state({blockers:[2],runs:[worker]}), after:state({runs:[worker]}), kind:'closed', recipients:['worker'] },
   { key:'last_blocker_removed', before:state({blockers:[2],runs:[worker]}), after:state({runs:[worker]}), recipients:['worker'] },
   { key:'execution_resumed_after_handoff', before:{...state({status:'needs-owner',runs:[worker]}),waitingForExecution:true} as Snapshot, after:state({runs:[worker]}), recipients:['worker'] },

@@ -51,6 +51,7 @@
     "run_reopened_with_closed_parent": true,
     "last_run_closed": true,
     "parent_closed_with_open_runs": true,
+    "preflight_promoted": true,
     "pr_merged": false,
     "review_pr_closed_without_merge": false,
     "review_pr_reference_removed": false

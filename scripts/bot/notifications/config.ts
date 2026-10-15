@@ -6,7 +6,7 @@ export const EVENTS = [
   'participant_removed', 'reviewer_removed_during_review', 'lgtm_added', 'lgtm_withdrawn', 'lgtm_invalidated_by_revision',
   'last_blocker_closed', 'last_blocker_removed', 'execution_resumed_after_handoff', 'blocker_added', 'blocker_reopened',
   'blocker_replaced', 'issue_reopened', 'run_reopened', 'parent_summary_invalidated_by_run_reopen',
-  'run_reopened_with_closed_parent', 'last_run_closed', 'parent_closed_with_open_runs', 'pr_merged',
+  'run_reopened_with_closed_parent', 'last_run_closed', 'parent_closed_with_open_runs', 'preflight_promoted', 'pr_merged',
   'review_pr_closed_without_merge', 'review_pr_reference_removed',
 ] as const;
 export type EventKey = typeof EVENTS[number];
