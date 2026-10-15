@@ -2,9 +2,11 @@ import { parseArgs } from 'node:util';
 import { issueNumber, UsageError, type Command } from '../lib/context.ts';
 import { runBody } from '../lib/run.ts';
 
-const usage = `run N [--title T] [--body-file F]
+const usage = `run N [--preflight] [--title T] [--body-file F]
     为 #N 开一个运行 issue（正文首行 Parent: #N），输出链接。bot 打上 run、挂为 #N 的子 issue，
     你不在 #N 的 assignee 里时补上。标题默认"运行：<#N 的标题>"。
+    --preflight：#N 还在等未完成的依赖（如未拍板的决策）时先做，首行写 Parent: #N (preflight)；
+    bot 打 preflight 而不是 run，依赖都关闭后自动转为 run。#N 没有未完成的依赖时按普通运行处理。
     --body-file 读 UTF-8 文件；- 为 stdin（Windows 勿用管道喂中文）。`;
 
 export const command: Command = {
@@ -13,12 +15,12 @@ export const command: Command = {
     const { values, positionals } = parseArgs({
       args,
       allowPositionals: true,
-      options: { title: { type: 'string' }, 'body-file': { type: 'string' } },
+      options: { title: { type: 'string' }, 'body-file': { type: 'string' }, preflight: { type: 'boolean', default: false } },
     });
     const n = issueNumber(positionals[0], usage);
     if (positionals.length > 1) throw new UsageError(usage);
     const title = values.title ?? `运行：${ctx.gh(['issue', 'view', String(n), '-R', ctx.repo, '--json', 'title', '--jq', '.title']).trim()}`;
-    const body = runBody(n, values['body-file'] ? ctx.read(values['body-file']) : '');
+    const body = runBody(n, values['body-file'] ? ctx.read(values['body-file']) : '', values.preflight);
     ctx.out(ctx.gh(['issue', 'create', '-R', ctx.repo, '--title', title, '--body-file', '-'], body).trim());
   },
 };

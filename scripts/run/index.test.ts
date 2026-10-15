@@ -22,6 +22,12 @@ test('run --title skips the parent lookup', () => {
   assert.equal(calls[0].input, 'Parent: #5');
 });
 
+test('run --preflight marks the first line', () => {
+  const { ctx, calls } = fakeContext();
+  command.run(['5', '--title', '前端', '--preflight'], ctx);
+  assert.equal(calls[0].input, 'Parent: #5 (preflight)');
+});
+
 test('run needs exactly one issue number', () => {
   const { ctx } = fakeContext();
   assert.throws(() => command.run([], ctx), UsageError);
