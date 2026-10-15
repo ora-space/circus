@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { hash, revisions, stillValid, type Candidate, type Cause, type Snapshot } from './rules.ts';
 import type { NotificationConfig } from './config.ts';
 import { candidates } from './rules.ts';
+import { formatMessage } from './message.ts';
 import type { Sender } from './feishu.ts';
 
 export interface Record {
@@ -141,10 +142,7 @@ export async function flush(
       if (!valid.length) {
         store.save(); continue;
       }
-      const reasons = [...new Set(valid.map(c => c.reason))];
-      const review = reasons.some(r => r.includes('请审查'));
-      const selected = review ? reasons.filter(r => !r.startsWith('请参与')) : reasons;
-      const text = `circus #${s.number}：${s.title.slice(0, 200)}\n${selected.join('\n')}\n${valid[0].url}`;
+      const text = formatMessage(s, valid);
       for (const r of deliverable) { r.attempts++; delete r.error; }
       store.save();
       await sender.send(group.identity, text, hash(deliverable.map(r => r.id).sort()));

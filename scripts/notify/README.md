@@ -54,6 +54,34 @@ node scripts/notify/smoke.ts --config-file .tmp/notifications.local.json --crede
 
 ## Actions 上线：直接发送
 
+### 私聊消息
+
+消息使用现有文本 API，无需增加飞书权限或改机器人配置。按“提醒类型、事项与当前状态、发生了什么、你需要做什么、发起人、事项/交接链接”排版；执行任务用中文名称，不展示内部 label、规则键或状态代号。正文不猜测评论的自然语言内容，具体修改要求仍以 GitHub 交接记录为准。
+
+例如作者交接：
+
+```text
+【需要你跟进】Circus
+事项：#95 飞书通知
+当前状态：等待作者跟进
+
+发生了什么
+• 事项已交回你处理。
+
+你需要做
+• 查看最新交接要求，继续处理并在事项中回复结果。
+
+发起人：@github-login
+查看事项：
+https://github.com/ora-space/circus/issues/95
+查看相关交接：
+https://github.com/ora-space/circus/issues/95#issuecomment-...
+```
+
+同次合并消息会去重描述和动作；参与邀请与审查请求同时发生时只保留审查动作。依赖完成与仅移除依赖关系用不同措辞，不把“解除依赖”写成“工作完成”。
+
+### 上线设置
+
 仓库 [circus workflow](../../.github/workflows/circus.yml) 注入下面三个 Repository Secrets；不需要额外存储或 self-hosted runner。
 
 | 名称 | 值 |
