@@ -32,9 +32,49 @@ const notices: Record<string, Notice> = {
   parent_closed_with_open_runs: { heading: '请完成执行任务收尾', change: '所属事项已经关闭，你的执行任务仍未结束。', action: '检查剩余工作，在执行任务中写总结并按协议收尾。' },
 };
 const line = (text: string) => text.replace(/[\r\n\t]+/g, ' ').trim();
+const statusNames: Record<string, string> = {
+  none: '未设置交接状态', 'needs-author': '等待作者跟进', 'needs-owner': '等待负责人决策', 'in-review': '等待审查',
+};
+const request = (status: string, actor: string) => status === 'in-review' ? `${actor}需要你 review 当前交付。`
+  : status === 'needs-owner' ? `${actor}需要你给出意见或决策。` : `${actor}需要你继续处理此事项。`;
+const transitionActions: Record<string, string> = {
+  'needs-owner->in-review': '查看本轮决策结论及交付内容，在关联 PR 中给出审查意见。',
+  'needs-author->in-review': '查看作者本轮处理结果及当前交付，在关联 PR 中给出审查意见。',
+  'in-review->needs-owner': '查看审查过程中提出的待决问题，在事项中回复决定。',
+  'needs-author->needs-owner': '查看作者本轮跟进后提出的问题，在事项中回复意见或决定。',
+  'in-review->needs-author': '查看本轮审查意见，处理需要修改或回复的内容，并反馈结果。',
+  'needs-owner->needs-author': '查看负责人本轮回复的结论或要求，继续处理并反馈结果。',
+};
 function notice(c: Candidate): Notice {
-  if (c.key.startsWith('initialStatus.') || c.key.startsWith('statusTransitions.')) return notices[c.guard.value!] ?? fallback(c);
-  return notices[c.key] ?? fallback(c);
+  const actor = `@${line(c.actor)}`;
+  if (c.key.startsWith('statusTransitions.')) {
+    const transition = c.key.slice('statusTransitions.'.length);
+    const [before, after] = transition.split('->');
+    const base = notices[after];
+    if (!base || !statusNames[before]) return fallback(c);
+    return { ...base, change: `状态由「${statusNames[before]}」变为「${statusNames[after]}」；${request(after, actor)}`,
+      action: transitionActions[transition] ?? base.action };
+  }
+  if (c.key.startsWith('initialStatus.')) {
+    const status = c.key.slice('initialStatus.'.length), base = notices[status];
+    return base ? { ...base, change: `${actor}创建事项时将状态设为「${statusNames[status]}」；${request(status, actor)}` } : fallback(c);
+  }
+  const base = notices[c.key] ?? fallback(c);
+  const changes: Record<string, string> = {
+    owner_request_updated: `状态仍为「等待负责人决策」；${actor}发起了新一轮请求，需要你再次给出意见或决策。`,
+    author_request_updated: `状态仍为「等待作者跟进」；${actor}再次交回事项，需要你处理本次的新要求。`,
+    review_requested_for_new_revision: `状态仍为「等待审查」；${actor}提交了新版本并重新请求你 review。`,
+    review_requested_again_same_revision: `状态仍为「等待审查」；${actor}明确发起新一轮请求，需要你重新 review 当前交付。`,
+    participant_assigned: `${actor}将你指派为此事项的协作者。`,
+    reviewer_assigned_during_review: `状态仍为「等待审查」；${actor}将你指定为审查人，需要你 review 当前交付。`,
+    participant_left: `${actor}退出了此事项的协作。`,
+    reviewer_left_during_review: `${actor}退出了本轮审查。`,
+    participant_removed: `${actor}撤回了你在此事项中的协作指派。`,
+    reviewer_removed_during_review: `${actor}撤回了你在此执行任务中的审查指派。`,
+    lgtm_added: `${actor}已给出审查认可，需要你核对版本并决定是否合并。`,
+    lgtm_withdrawn: `${actor}撤回了此前的审查认可，不能再依据旧认可合并。`,
+  };
+  return { ...base, change: changes[c.key] ?? base.change };
 }
 const fallback = (c: Candidate): Notice => ({ heading: '需要你处理', change: line(c.reason), action: '查看事项和相关记录，确认下一步处理。' });
 
@@ -56,7 +96,6 @@ export function formatMessage(snapshot: Snapshot, candidates: Candidate[]): stri
     `当前状态：${status}`, '',
     '发生了什么', ...unique(details.map(n => n.change)).map(s => `• ${s}`), '',
     '你需要做', ...unique(details.map(n => n.action)).map(s => `• ${s}`), '',
-    `发起人：${unique(selected.map(c => `@${c.actor}`)).join('、')}`,
     '查看事项：', snapshot.url,
     ...(urls.length ? ['查看相关交接：', ...urls] : []),
   ].join('\n');
