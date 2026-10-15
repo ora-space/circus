@@ -101,6 +101,42 @@ run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控�
 
 ## 状态和送达契约
 
+### 直接发送的覆盖边界
+
+九种进入 needs-owner/in-review/needs-author 的不同状态转移均覆盖；对角线及退回 none 的七格固定静默。创建使用 initialStatus，不能混用 none→目标状态开关。同状态明确请求使用对应事件开关，不能把普通评论当新请求。配置仅决定是否允许通知，仍须满足真实事件、权限、角色和自通知条件。
+
+下表列明全部 25 个事件的证据要求。直接发送只拥有本次前后快照；“需要历史”的项目不能仅因为开关 true 就保证生产触发，不为补齐表格猜测历史或广播。
+
+| 事件键 | 直接发送的条件/边界 |
+|---|---|
+| owner_request_updated | 状态仍为 needs-owner，合法命令明确发起新请求 |
+| author_request_updated | 状态仍为 needs-author，合法命令明确交回新请求 |
+| review_requested_for_new_revision | 需要可确认的前后请求版本；无历史不能保证识别此前已推送的新版本 |
+| review_requested_again_same_revision | 明确重新请求审查；无可确认的版本差异时使用此项，不声称已核实版本相同 |
+| participant_assigned | 普通事项实际新增指派 |
+| reviewer_assigned_during_review | 已待审执行任务实际新增 reviewer，作者不审自己 |
+| participant_left | 活动协作者自行退出，提醒事项作者调整安排 |
+| reviewer_left_during_review | 活动 reviewer 自行退出，提醒运行作者调整安排 |
+| participant_removed | 他人撤回活动执行指派，提醒被撤回者 |
+| reviewer_removed_during_review | 他人撤回活动审查指派，提醒被撤回者 |
+| lgtm_added | 实际新增审查认可，提醒 owner |
+| lgtm_withdrawn | 明确撤回审查认可；关闭/交接引起的自动清理静默 |
+| lgtm_invalidated_by_revision | 需要此前已发认可记录和版本差异；直接模式不保证，持久模式可判定 |
+| last_blocker_closed | 最后未完成依赖合法关闭，且当前无交接等待；关闭不等于工作完成 |
+| last_blocker_removed | 最后未完成依赖关系移除，且当前无交接等待 |
+| execution_resumed_after_handoff | 需要此前依赖等待记录；跨事件直接模式不保证，持久模式可判定 |
+| blocker_added | active run 的执行前提由无依赖变为有依赖 |
+| blocker_reopened | 依赖由关闭变为打开，影响 active run |
+| blocker_replaced | 仍被阻塞时增加/更换依赖，影响 active run |
+| issue_reopened | 普通事项合法重开且当前无交接/依赖等待，恢复实际执行 |
+| run_reopened | parent open，执行任务合法重开且当前无交接/依赖等待 |
+| parent_summary_invalidated_by_run_reopen | 需要此前已发收尾记录；直接模式不保证，持久模式可判定 |
+| run_reopened_with_closed_parent | 执行任务重开，但 parent 已关闭；只提醒收尾 |
+| last_run_closed | 最后 active run 关闭，parent open 且无交接/依赖等待；提醒汇总，不自动宣告完成 |
+| parent_closed_with_open_runs | parent 合法关闭，提醒未关闭 run 的作者收尾 |
+
+PR 合并/关闭/引用撤回的三个旧字段仍停用。不扩展第三方 Bot 或原生依赖编辑实时入口；当前生产入口是人的合法协议命令和事项生命周期事件。补发及跨运行去重不属于直接模式的可靠性承诺。
+
 下面的持久历史、失败补发和跨事件失效判断适用于显式指定状态文件的可选持久模式。生产直接模式只处理本次真实业务事件，保留配置过滤、身份过滤、发送前复核和同次合并；没有历史时不发“撤回此前已发通知”类事件，不保证跨事件恢复/版本判断。通知失败只记日志，不影响业务。无需为直接模式另建共享存储、全仓基线或补偿任务。
 
 保留生命周期、交接、作者/assignee、parent/运行集合及作者、未完成依赖集合、审查请求/证据及各PR状态。看板Done > status > Blocked > Running > Open只是投影，不能盖掉执行影响。依赖目标包括run，关闭/reopen也须处理直接依赖者。

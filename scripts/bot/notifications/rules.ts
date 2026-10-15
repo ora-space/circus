@@ -19,6 +19,7 @@ export interface Cause {
 export interface Candidate {
   key: string; issue: number; recipient: string; reason: string; actor: string; source: string; url: string; title: string;
   guard: { kind: string; value?: string; target?: number; handoffId?: string; revision?: string };
+  context?: { parent: number | null; blockersAdded: number[]; blockersRemoved: number[]; runsClosed: number[]; runsReopened: number[] };
 }
 export const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const canonical = (xs: string[]) => [...new Set(xs.map(x => x.toLowerCase()))];
@@ -41,7 +42,14 @@ export function candidates(before: Snapshot | undefined, after: Snapshot, cause:
       const actualGuard = guard.kind === 'status' && after.status === 'in-review' && after.parent !== null && !config.ownerRecipients.includes(recipient)
         ? { ...guard, kind: 'status-reviewer' } : guard;
       out.push({ key, issue: after.number, recipient, reason, guard: actualGuard, actor: cause.actor.toLowerCase(),
-        source: cause.id, url: cause.sourceUrl ?? after.url, title: after.title });
+        source: cause.id, url: cause.sourceUrl ?? (cause.issue !== undefined && cause.issue !== after.number
+          ? after.url.replace(/\/issues\/\d+$/, `/issues/${cause.issue}`) : after.url), title: after.title,
+        context: { parent: after.parent,
+          blockersAdded: after.blockers.filter(n => !before?.blockers.includes(n)),
+          blockersRemoved: before?.blockers.filter(n => !after.blockers.includes(n)) ?? [],
+          runsClosed: before?.runs.filter(r => r.open && after.runs.some(next => next.number === r.number && !next.open)).map(r => r.number) ?? [],
+          runsReopened: after.runs.filter(r => r.open && before?.runs.some(old => old.number === r.number && !old.open)).map(r => r.number),
+        } });
     }
   };
   const handoff = (key: string) => {
@@ -64,7 +72,7 @@ export function candidates(before: Snapshot | undefined, after: Snapshot, cause:
     return out;
   }
   if (!after.open) return out; // Closed issues only cause actions on dependents / parent / runs.
-  if (!before.open && cause.kind === 'reopened') {
+  if (!before.open && cause.kind === 'reopened' && after.status === 'none' && !after.blockers.length) {
     add(after.parent === null ? 'issue_reopened' : 'run_reopened', executors(after),
       '事项已重新打开，请确认恢复执行的安排', { kind: 'open' });
   } else if (before.open && cause.kind !== 'opened') {
@@ -126,6 +134,7 @@ export function stillValid(c: Candidate, s: Snapshot): boolean {
   if (!s.open) return false;
   if (s.parent !== null && !s.parentOpen) return c.guard.kind === 'closed-parent';
   switch (c.guard.kind) {
+    case 'open': return s.status === 'none' && !s.blockers.length;
     case 'status':
     case 'status-reviewer': return c.guard.value === s.status
       && (!c.guard.handoffId || c.guard.handoffId === s.handoffId)

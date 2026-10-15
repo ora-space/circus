@@ -69,7 +69,7 @@ node scripts/notify/smoke.ts --config-file .tmp/notifications.local.json --crede
 • 状态由「等待审查」变为「等待作者跟进」；@github-login需要你继续处理此事项。
 
 你需要做
-• 查看本轮审查意见，处理需要修改或回复的内容，并反馈结果。
+• 查看本轮交接说明或审查意见，处理需要修改或回复的内容。
 
 查看事项：
 https://github.com/ora-space/circus/issues/95
@@ -77,7 +77,7 @@ https://github.com/ora-space/circus/issues/95
 https://github.com/ora-space/circus/issues/95#issuecomment-...
 ```
 
-同次合并消息会去重描述和动作；参与邀请与审查请求同时发生时只保留审查动作。依赖完成与仅移除依赖关系用不同措辞，不把“解除依赖”写成“工作完成”。
+同次合并消息会去重描述和动作；参与邀请与审查请求同时发生时只保留审查动作。依赖关闭与仅移除依赖关系用不同措辞，不把“关闭/解除依赖”写成“工作完成”，因为关闭也可能表示事项取消。请求审查新版本不等于请求人提交了这个版本，正文不猜测提交者或回复内容。
 
 ### 上线设置
 

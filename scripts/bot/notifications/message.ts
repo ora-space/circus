@@ -18,7 +18,7 @@ const notices: Record<string, Notice> = {
   lgtm_added: { heading: '请确认交付结果', change: '交付已获得审查认可。', action: '核对审查意见和审过的版本，再决定是否合并。' },
   lgtm_withdrawn: { heading: '审查认可已撤回', change: '此前的审查认可已被撤回。', action: '查看撤回原因，不再依据旧认可合并。' },
   lgtm_invalidated_by_revision: { heading: '旧审查结论已失效', change: '交付版本发生变化，旧版本的认可不再适用。', action: '确认当前版本的审查安排后，再决定是否合并。' },
-  last_blocker_closed: { heading: '可以继续推进', change: '最后一个未完成的依赖已完成。', action: '检查依赖结果，确认并恢复你负责的工作。' },
+  last_blocker_closed: { heading: '可以继续推进', change: '最后一个未完成的依赖已关闭。', action: '查看依赖的总结，确认并恢复你负责的工作。' },
   last_blocker_removed: { heading: '可以继续推进', change: '最后一个未完成的依赖关系已解除。', action: '检查调整后的执行前提，确认并恢复你负责的工作。' },
   execution_resumed_after_handoff: { heading: '可以继续推进', change: '依赖已解除，交接等待也已结束。', action: '按最新安排继续你负责的工作。' },
   blocker_added: { heading: '请检查新增依赖', change: '执行任务出现了新的未完成依赖。', action: '查看依赖，确认受影响部分及是否需要调整执行安排。' },
@@ -38,12 +38,12 @@ const statusNames: Record<string, string> = {
 const request = (status: string, actor: string) => status === 'in-review' ? `${actor}需要你 review 当前交付。`
   : status === 'needs-owner' ? `${actor}需要你给出意见或决策。` : `${actor}需要你继续处理此事项。`;
 const transitionActions: Record<string, string> = {
-  'needs-owner->in-review': '查看本轮决策结论及交付内容，在关联 PR 中给出审查意见。',
-  'needs-author->in-review': '查看作者本轮处理结果及当前交付，在关联 PR 中给出审查意见。',
-  'in-review->needs-owner': '查看审查过程中提出的待决问题，在事项中回复决定。',
-  'needs-author->needs-owner': '查看作者本轮跟进后提出的问题，在事项中回复意见或决定。',
-  'in-review->needs-author': '查看本轮审查意见，处理需要修改或回复的内容，并反馈结果。',
-  'needs-owner->needs-author': '查看负责人本轮回复的结论或要求，继续处理并反馈结果。',
+  'needs-owner->in-review': '查看本轮交接说明及交付内容，在 GitHub 回复审查意见。',
+  'needs-author->in-review': '查看本轮处理结果及当前交付，在 GitHub 回复审查意见。',
+  'in-review->needs-owner': '查看本轮审查相关的待决请求，在事项中回复决定。',
+  'needs-author->needs-owner': '查看本轮跟进后的待决请求，在事项中回复意见或决定。',
+  'in-review->needs-author': '查看本轮交接说明或审查意见，处理需要修改或回复的内容。',
+  'needs-owner->needs-author': '查看本轮交接结论或要求，继续处理并反馈结果。',
 };
 function notice(c: Candidate): Notice {
   const actor = `@${line(c.actor)}`;
@@ -57,13 +57,17 @@ function notice(c: Candidate): Notice {
   }
   if (c.key.startsWith('initialStatus.')) {
     const status = c.key.slice('initialStatus.'.length), base = notices[status];
-    return base ? { ...base, change: `${actor}创建事项时将状态设为「${statusNames[status]}」；${request(status, actor)}` } : fallback(c);
+    return base ? { ...base, change: `${actor}创建时将状态设为「${statusNames[status]}」；${request(status, actor)}` } : fallback(c);
   }
   const base = notices[c.key] ?? fallback(c);
+  const numbers = (ns?: number[]) => ns?.length ? ns.map(n => `#${n}`).join('、') : '';
+  const removed = numbers(c.context?.blockersRemoved), added = numbers(c.context?.blockersAdded);
+  const closedRuns = numbers(c.context?.runsClosed), reopenedRuns = numbers(c.context?.runsReopened);
+  const parent = c.context?.parent ? `所属事项 #${c.context.parent}` : '所属事项';
   const changes: Record<string, string> = {
     owner_request_updated: `状态仍为「等待负责人决策」；${actor}发起了新一轮请求，需要你再次给出意见或决策。`,
     author_request_updated: `状态仍为「等待作者跟进」；${actor}再次交回事项，需要你处理本次的新要求。`,
-    review_requested_for_new_revision: `状态仍为「等待审查」；${actor}提交了新版本并重新请求你 review。`,
+    review_requested_for_new_revision: `状态仍为「等待审查」，本轮交付版本已有变化；${actor}重新请求你 review。`,
     review_requested_again_same_revision: `状态仍为「等待审查」；${actor}明确发起新一轮请求，需要你重新 review 当前交付。`,
     participant_assigned: `${actor}将你指派为此事项的协作者。`,
     reviewer_assigned_during_review: `状态仍为「等待审查」；${actor}将你指定为审查人，需要你 review 当前交付。`,
@@ -73,6 +77,17 @@ function notice(c: Candidate): Notice {
     reviewer_removed_during_review: `${actor}撤回了你在此执行任务中的审查指派。`,
     lgtm_added: `${actor}已给出审查认可，需要你核对版本并决定是否合并。`,
     lgtm_withdrawn: `${actor}撤回了此前的审查认可，不能再依据旧认可合并。`,
+    last_blocker_closed: `最后一个未完成的依赖${removed ? ` ${removed}` : ''}已关闭，当前已无未完成依赖。`,
+    last_blocker_removed: `最后的未完成依赖关系${removed ? ` ${removed}` : ''}已移除，当前已无未完成依赖。`,
+    blocker_added: `新增未完成依赖${added ? ` ${added}` : ''}，当前执行任务受到影响。`,
+    blocker_reopened: `依赖${added ? ` ${added}` : ''}由已关闭变为重新打开，当前执行任务受到影响。`,
+    blocker_replaced: `未完成依赖已调整${added ? `：新增 ${added}` : ''}${removed ? `${added ? '；' : '：'}移除 ${removed}` : ''}，当前仍需等待依赖。`,
+    issue_reopened: `${actor}将事项由已关闭变为重新打开，当前没有交接或依赖等待。`,
+    run_reopened: `${actor}将执行任务由已关闭变为重新打开，当前没有交接或依赖等待。`,
+    run_reopened_with_closed_parent: `${actor}重新打开了此执行任务，但${parent}已关闭。`,
+    parent_closed_with_open_runs: `${parent}已关闭，此执行任务仍未结束。`,
+    last_run_closed: `执行任务${closedRuns ? ` ${closedRuns}` : ''}已关闭，当前已无未结束的执行任务；此事项仍未关闭。`,
+    parent_summary_invalidated_by_run_reopen: `执行任务${reopenedRuns ? ` ${reopenedRuns}` : ''}重新打开，先前的收尾判断已失效。`,
   };
   return { ...base, change: changes[c.key] ?? base.change };
 }

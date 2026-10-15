@@ -15,7 +15,7 @@ test('author handoff describes its exact transition without a separate sender fi
   assert.match(message, /事项：#95 飞书通知/);
   assert.match(message, /当前状态：等待作者跟进/);
   assert.match(message, /状态由「等待审查」变为「等待作者跟进」；@owner需要你继续处理此事项/);
-  assert.match(message, /你需要做\n• 查看本轮审查意见/);
+  assert.match(message, /你需要做\n• 查看本轮交接说明或审查意见/);
   assert.doesNotMatch(message, /发起人：/);
   assert.match(message, /查看事项：\nhttps:\/\/github.com\/ora-space\/circus\/issues\/95\n查看相关交接：/);
   assert.doesNotMatch(message, /needs-author|statusTransitions|owner 决定/);
@@ -50,15 +50,15 @@ test('same-state requests and initial creation never invent a state transition',
     assert.doesNotMatch(message, /状态由|发起人：/);
   }
   const initial = formatMessage(state(), [candidate('initialStatus.in-review', 'in-review')]);
-  assert.match(initial, /@owner创建事项时将状态设为「等待审查」/);
+  assert.match(initial, /@owner创建时将状态设为「等待审查」/);
   assert.doesNotMatch(initial, /状态由|状态仍为/);
 });
 
 test('dependency completion and removal distinguish done work from removed dependency', () => {
   const done = formatMessage(state(), [candidate('last_blocker_closed')]);
   const removed = formatMessage(state(), [candidate('last_blocker_removed')]);
-  assert.match(done, /依赖已完成/);
-  assert.match(removed, /依赖关系已解除/);
+  assert.match(done, /依赖已关闭/);
+  assert.match(removed, /依赖关系已移除/);
   assert.doesNotMatch(removed, /依赖已完成/);
 });
 
@@ -69,4 +69,15 @@ test('title is bounded and multiline input cannot create forged message sections
   assert.match(message, /写总结并按协议收尾/);
   assert.ok(message.split('\n')[1].length < 220);
   assert.doesNotMatch(message, /\n伪造状态/);
+});
+
+test('related dependency and parent IDs appear without claiming work completion or code authorship', () => {
+  const dependency = candidate('last_blocker_closed');
+  dependency.context = { parent:null,blockersAdded:[],blockersRemoved:[12],runsClosed:[],runsReopened:[] };
+  const text = formatMessage(state(),[dependency]);
+  assert.match(text,/依赖 #12已关闭/);
+  assert.doesNotMatch(text,/工作已完成|依赖已完成/);
+  const revised = formatMessage(state(),[candidate('review_requested_for_new_revision')]);
+  assert.match(revised,/交付版本已有变化；@owner重新请求你 review/);
+  assert.doesNotMatch(revised,/@owner提交了/);
 });
