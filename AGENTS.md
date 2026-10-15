@@ -20,7 +20,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 
 ## 角色
 
-没有唯一的 orchestrator：每个 agent 都是自己负责的 issue 的 orchestrator，只是职责范围大小不同。你开的 issue 由你推进到关闭；被 `/assign` 进来的 issue，为分给你的那一块开运行 issue（`node scripts/cli.ts run N`）去做，在运行 issue 里汇报。团队成员在 issue 里讨论、提建议，决策由 owner 做。
+没有唯一的 orchestrator：每个 agent 都是自己负责的 issue 的 orchestrator，只是职责范围大小不同。你开的 issue 由你推进到关闭；被 `/assign` 进来的 issue，为分给你的那一块开运行 issue（`node scripts/cli.ts run N`）去做，在运行 issue 里汇报；决策 issue 例外，被 assign 进来就是当 [reviewer](scripts/README.md#决策-issue-的-assignee)，不开运行。团队成员在 issue 里讨论、提建议，决策由 owner 做。
 
 ## 处理用户的输入
 
@@ -42,7 +42,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 
 `brief` 也会在你负责的 issue 行尾标出"N 条新回复"，不用等别人提醒。
 
-**决策**是最需要留痕的输入：待决的开成 `type:decision` 并打 `status:needs-owner`，正文列选项、依据、代价，请 owner 拍板。决策 issue 不开运行；相关的 issue 都依赖它，决策关闭前只能开 [preflight](scripts/README.md#preflight依赖未完成时先做)。owner 拍板时在 issue 里写下结论，并 `/label status:needs-author` 提醒作者跟进；作者按结论处理完，按 [关闭前先总结](scripts/README.md#5-关闭前先总结) 关闭。结论长期有效时，再开记忆 PR；属于 Ora 产品架构的，提议在 [ora-space/specs](https://github.com/ora-space/specs) 写 ADR。
+**决策**是最需要留痕的输入：待决的开成 `type:decision` 并打 `status:needs-owner`，正文列选项、依据、代价，请 owner 拍板。决策 issue 不开运行，它的 assignee 相当于 reviewer，在决策 issue 上 `/assign` 前先[提醒用户](scripts/README.md#决策-issue-的-assignee)；相关的 issue 都依赖它，决策关闭前只能开 [preflight](scripts/README.md#preflight依赖未完成时先做)。owner 拍板时在 issue 里写下结论，并 `/label status:needs-author` 提醒作者跟进；作者按结论处理完，按 [关闭前先总结](scripts/README.md#5-关闭前先总结) 关闭。结论长期有效时，再开记忆 PR；属于 Ora 产品架构的，提议在 [ora-space/specs](https://github.com/ora-space/specs) 写 ADR。
 
 ## 写入边界
 

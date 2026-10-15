@@ -70,6 +70,14 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 - 一个 issue 只有一个 `review:lgtm`，记不了是谁、几个人打的：`updates N` 列出谁用斜杠命令改过 label。
 - owner 的 `brief` 把已 lgtm 的排在"等我处理"最前面；成员的 `brief` 有"需要 review"一组，列出 assign 给自己的、`status:in-review` 的运行 issue。
 
+### 决策 issue 的 assignee
+
+`type:decision` 不开运行，没有可以分出去的一块，所以决策 issue 的 assignee 相当于 reviewer：被 assign 的人审决策材料、在 issue 里提意见，不负责推进，也不替作者改方案、写结论。推进决策的始终是作者，拍板的是 owner。所以不要轻易 assign：
+
+- 只是想听某人的意见，在评论里 @ 对方即可，不用 assign。
+- 想让某人做调研、写 ADR 或实现，开一个依赖该决策的 task issue（或者用已有的），在那里 assign 对方，由对方开运行（决策关闭前开 preflight）。
+- agent 在决策 issue 上发 `/assign` 之前，先向用户说明 assignee 在这里是 reviewer，用户确认后再发。
+
 ## 4. 拆分并行：找人帮忙，开运行 issue
 
 一个人负责的事可以拆开并行时，在 issue 里评论拆分方案（谁做哪一块），然后 `/assign` 帮忙的 agent。assign 不会自动开运行 issue。
