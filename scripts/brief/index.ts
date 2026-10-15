@@ -3,7 +3,7 @@ import type { Command } from '../lib/context.ts';
 import { epicOf } from '../lib/deps.ts';
 import { graphql } from '../lib/gh.ts';
 import { describeIdentity, whoami } from '../lib/identity.ts';
-import { parentOf } from '../lib/run.ts';
+import { parentOf, PREFLIGHT_LABEL } from '../lib/run.ts';
 import { parseSlash } from '../lib/slash.ts';
 
 const usage = `brief [--mine]
@@ -14,7 +14,7 @@ const usage = `brief [--mine]
       成员是"等 owner"：我创建的 status:needs-owner，以及"需要 review"：assign 给我的、status:in-review 的运行 issue（运行 issue 的 assignee 就是 reviewer）；
       其余我负责的（我是作者或 assignee）；其他。
     每组画成树：子事项（正文"总事项：#N"）和运行 issue 挂在所属 issue 下；组内按优先级排序；
-    有未完成依赖的标出"等待"；我负责的 issue 在我上次评论之后有别人的回复时标出"N 条新回复"。--mine 不列"其他"。空的分组不显示。`;
+    有未完成依赖的标出"等待"，preflight 运行标出 parent 还在等的依赖；我负责的 issue 在我上次评论之后有别人的回复时标出"N 条新回复"。--mine 不列"其他"。空的分组不显示。`;
 
 export interface ListedIssue {
   number: number;
@@ -59,6 +59,14 @@ export function closeHints(i: ListedIssue, open: Set<number>): string[] {
   const parent = parentOf(i.body);
   if (parent !== null && !open.has(parent)) hints.push(`parent #${parent} 已关闭`);
   return hints;
+}
+
+// A preflight run is worked on before its parent's dependencies close; merging waits on them.
+export function preflightHint(i: ListedIssue, byNumber: Map<number, ListedIssue>): string[] {
+  if (!i.labels.includes(PREFLIGHT_LABEL)) return [];
+  const parent = parentOf(i.body);
+  const waiting = parent === null ? [] : (byNumber.get(parent)?.waitingOn ?? []);
+  return [waiting.length ? `preflight：#${parent} 还在等 ${waiting.map((n) => `#${n}`).join(' ')}，合并前按结论核对` : 'preflight'];
 }
 
 function describe(i: ListedIssue, nested: boolean, hints: string[] = [], replies = 0): string {
@@ -116,6 +124,8 @@ export function format(issues: ListedIssue[], me: string, onlyMine: boolean, own
   // Only the author closes an issue, so only mine can be in this group; it comes first.
   const hints = (i: ListedIssue) => (i.author === me ? closeHints(i, open) : []);
   const closable = sorted.filter((i) => hints(i).length);
+  const byNumber = new Map(issues.map((i) => [i.number, i]));
+  const notes = (i: ListedIssue) => [...hints(i), ...preflightHint(i, byNumber)];
   // New replies matter on issues I am responsible for.
   const replies = (i: ListedIssue) => (mine(i, me) ? newReplies(i, me) : 0);
   // The owner sees everyone's issues waiting on them: that is the owner's queue. A member sees
@@ -147,7 +157,7 @@ export function format(issues: ListedIssue[], me: string, onlyMine: boolean, own
   const shown = sections.filter(([, list]) => list.length);
   if (!shown.length) return '没有未关闭的 issue';
   return shown
-    .map(([title, list]) => [`## ${title} (${list.length})`, ...tree(list, hints, replies), ''].join('\n'))
+    .map(([title, list]) => [`## ${title} (${list.length})`, ...tree(list, notes, replies), ''].join('\n'))
     .join('\n')
     .trimEnd();
 }

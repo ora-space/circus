@@ -104,6 +104,17 @@ test('brief for the owner: runs someone approved come first among those waiting'
   );
 });
 
+test('brief for the owner: a preflight waiting for review names what its parent still waits on', () => {
+  const issues = [
+    issue(8, '定时任务', 'bob', { waitingOn: [3] }),
+    issue(2, '运行：定时任务', 'bob', { body: 'Parent: #8 (preflight)', labels: ['preflight', 'status:in-review'] }),
+  ];
+  assert.equal(
+    format(issues, 'me', false, true).split('\n')[1],
+    '- #2 运行：定时任务（preflight：#8 还在等 #3，合并前按结论核对；运行 → #8）  @bob [preflight status:in-review]',
+  );
+});
+
 test('brief for a member: runs assigned to me are the ones I was asked to review', () => {
   const run = (number: number, author: string, assignees: string[], labels = ['status:in-review']) =>
     issue(number, `运行 ${number}`, author, { body: 'Parent: #8', labels: ['run', ...labels], assignees });
