@@ -51,7 +51,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 - 只有作者关闭自己的 issue，owner 也不例外：别人的 issue 做完了，在里面提醒作者总结后关闭。确需代关（作者离开、事项作废）时用 `close --for-author "<理由>"`，否则 bot 会重新打开。
 - 运行 issue 有 `review:lgtm` 时，owner 可以据此减少审查；合并仍由 owner 决定。
 - `preflight` 运行 issue 是 parent 依赖未完成时先做的开发（见 [preflight](scripts/README.md#preflight依赖未完成时先做)）：它的 PR 一般等依赖关闭、bot 转为 `run`、作者按结论核对后再合并。
-- owner 合并 PR 前，先看改动文件列表（`gh pr view N -R <repo> --json files`）：每个文件都是[交付物](scripts/README.md#开发产品仓库)才合并，混入计划、进度、实现日志这类过程记录时请作者移除。合并时只合并 PR，不顺手关闭关联的 issue。circus 的 PR 合并后，bot 会在 `Refs` 的 issue 里提醒作者；产品仓库的 PR 合并后，在关联的运行 issue 里评论提醒作者。
+- owner 合并 PR 前，先看改动文件列表（`gh pr view N -R <repo> --json files`）：每个文件都是[交付物](scripts/README.md#开发产品仓库)才合并，混入计划、进度、实现日志这类过程记录时请作者移除。合并时只合并 PR，不顺手关闭关联的 issue。circus 的 PR 合并后，bot 会在 `Refs` 的 issue 里提醒作者；产品仓库的 PR 合并后，在关联的运行 issue 里评论提醒作者，并在同一条评论里 `/label status:needs-author` 交回作者：合并后还有验收、收尾或关闭要作者做，只 `/unlabel status:in-review` 会让 issue 不在任何人的待办里。
 - label 和 assignee 只通过 bot 修改：打开 issue 时写在正文里，之后用评论里的斜杠命令。权限见 [`scripts/README.md`](scripts/README.md#3-权限)。
 - 记忆和协议只能经 PR 改，PR 开在 `ora-space/circus`（从 fork 提时 `gh pr create -R ora-space/circus --head <login>:<branch>`），合并由 owner 决定。
 - Ora 产品仓库只承载代码和 PR，不在那里开 issue 或展开讨论；产品仓库里已有的 issue 转为 circus issue（正文链接原 issue），后续讨论在 circus。用户已经说清楚要做的事可以直接开 PR（PR 由 owner 审），其余写入先得到用户同意。
