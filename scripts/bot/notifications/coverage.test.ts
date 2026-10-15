@@ -11,6 +11,7 @@ const run = (fields: Partial<Snapshot> = {}) => state({ parent: 10, status: 'in-
 const worker = { number: 4, author: 'worker', open: true };
 const pr = { key: 'ora-space/cloud#1', sha: 'old', state: 'open' as const, url: 'https://github.com/ora-space/cloud/pull/1' };
 const review = state({ status: 'in-review', prs: [pr] });
+const reviewedRun = run({ prs: [pr] });
 const scenarios: Scenario[] = [
   { key:'owner_request_updated', before:state({status:'needs-owner'}), after:state({status:'needs-owner'}), requests:['status:needs-owner'], recipients:['owner'] },
   { key:'author_request_updated', before:state({status:'needs-author'}), after:state({status:'needs-author'}), requests:['status:needs-author'], recipients:['alice'] },
@@ -22,9 +23,9 @@ const scenarios: Scenario[] = [
   { key:'reviewer_left_during_review', before:run(), after:run({assignees:[]}), actor:'bob', recipients:['alice'] },
   { key:'participant_removed', before:state({assignees:['bob']}), after:state(), recipients:['bob'] },
   { key:'reviewer_removed_during_review', before:run(), after:run({assignees:[]}), recipients:['bob'] },
-  { key:'lgtm_added', before:review, after:{...review,lgtm:true}, recipients:['owner'] },
-  { key:'lgtm_withdrawn', before:{...review,lgtm:true}, after:review, recipients:['owner'] },
-  { key:'lgtm_invalidated_by_revision', before:{...review,lgtm:true}, after:{...review,lgtm:true,prs:[{...pr,sha:'new'}]}, recipients:['owner'] },
+  { key:'lgtm_added', before:reviewedRun, after:{...reviewedRun,lgtm:true}, actor:'bob', recipients:['alice'] },
+  { key:'lgtm_withdrawn', before:{...reviewedRun,lgtm:true}, after:reviewedRun, actor:'bob', recipients:['alice'] },
+  { key:'lgtm_invalidated_by_revision', before:{...reviewedRun,lgtm:true}, after:{...reviewedRun,prs:[{...pr,sha:'new'}]}, actor:'alice', requests:['status:in-review'], recipients:['bob'] },
   { key:'last_blocker_closed', before:state({blockers:[2],runs:[worker]}), after:state({runs:[worker]}), kind:'closed', recipients:['worker'] },
   { key:'last_blocker_removed', before:state({blockers:[2],runs:[worker]}), after:state({runs:[worker]}), recipients:['worker'] },
   { key:'execution_resumed_after_handoff', before:{...state({status:'needs-owner',runs:[worker]}),waitingForExecution:true} as Snapshot, after:state({runs:[worker]}), recipients:['worker'] },

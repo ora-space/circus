@@ -60,9 +60,9 @@
 | `reviewer_left_during_review` | 开 | 运行作者 | 活动reviewer自行退出，需确认安排；owner仍能审查 |
 | `participant_removed` | 开 | 被移除参与者 | 他人移除已有活动执行待办的参与者 |
 | `reviewer_removed_during_review` | 开 | 被移除reviewer | 他人移除已有活动审查待办的reviewer |
-| `lgtm_added` | 开 | owner | 新增review:lgtm |
-| `lgtm_withdrawn` | 开 | owner | 明确撤销lgtm；交接或关闭引起的清理不算 |
-| `lgtm_invalidated_by_revision` | 开 | owner | 版本变化使已通知认可失效；不逐push催审 |
+| `lgtm_added` | 开 | 运行作者 | 运行待审时新增review:lgtm；合并仍由owner决定 |
+| `lgtm_withdrawn` | 开 | 运行作者 | 明确撤销lgtm；交接或关闭引起的清理不算 |
+| `lgtm_invalidated_by_revision` | 开 | reviewer | 作者重新请求审查（通常推了新版本）清掉了已有lgtm；不逐push催审 |
 | `last_blocker_closed` | 开 | 实际等待执行者 | 最后未完成依赖合法关闭，包括运行issue |
 | `last_blocker_removed` | 开 | 实际等待执行者 | 删除最后未完成依赖，包括/undepend与原生关系编辑 |
 | `execution_resumed_after_handoff` | 开 | 实际等待执行者 | 依赖此前已解除，现结束交接等待后真正恢复执行 |
@@ -119,9 +119,9 @@ run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控�
 | reviewer_left_during_review | 活动 reviewer 自行退出，提醒运行作者调整安排 |
 | participant_removed | 他人撤回活动执行指派，提醒被撤回者 |
 | reviewer_removed_during_review | 他人撤回活动审查指派，提醒被撤回者 |
-| lgtm_added | 实际新增审查认可，提醒 owner |
-| lgtm_withdrawn | 明确撤回审查认可；关闭/交接引起的自动清理静默 |
-| lgtm_invalidated_by_revision | 需要此前已发认可记录和版本差异；直接模式不保证，持久模式可判定 |
+| lgtm_added | 实际新增审查认可，提醒运行作者 |
+| lgtm_withdrawn | 明确撤回审查认可，提醒运行作者；关闭/交接引起的自动清理静默 |
+| lgtm_invalidated_by_revision | 作者重新打 status:in-review 时已有 lgtm 被清除，提醒 reviewer；本次前后快照即可判定 |
 | last_blocker_closed | 最后未完成依赖合法关闭，且当前无交接等待；关闭不等于工作完成 |
 | last_blocker_removed | 最后未完成依赖关系移除，且当前无交接等待 |
 | execution_resumed_after_handoff | 需要此前依赖等待记录；跨事件直接模式不保证，持久模式可判定 |

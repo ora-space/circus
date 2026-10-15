@@ -97,13 +97,16 @@ export function candidates(before: Snapshot | undefined, after: Snapshot, cause:
       : self ? 'participant_left' : 'participant_removed', self ? [after.author] : [user],
       self ? '协作者已退出，请确认剩余安排' : '你此前的执行或审查指派已撤回', { kind: 'removed', value: user.toLowerCase() });
   }
-  if (after.status === 'in-review') {
-    if (!before.lgtm && after.lgtm) add('lgtm_added', config.ownerRecipients, '已有审查认可，请检查审过版本后决定是否合并', { kind: 'lgtm', value: revisions(after) });
-    if (before.lgtm && !after.lgtm && before.status === after.status && !cause.requests?.includes('status:in-review')) {
-      add('lgtm_withdrawn', config.ownerRecipients, '旧审查认可已撤回，请勿依据旧认可合并', { kind: 'no-lgtm' });
+  // lgtm news goes to the run's author; a cleared lgtm asks its reviewers to look again.
+  if (after.status === 'in-review' && after.parent !== null) {
+    if (!before.lgtm && after.lgtm) add('lgtm_added', [after.author], '已有审查认可，合并由 owner 决定', { kind: 'lgtm', value: revisions(after) });
+    const rerequested = before.status === after.status && cause.requests?.includes('status:in-review');
+    if (before.lgtm && !after.lgtm && before.status === after.status && !rerequested) {
+      add('lgtm_withdrawn', [after.author], '审查认可已撤回', { kind: 'no-lgtm' });
     }
-    if (before.lgtm && before.prsKnown !== false && after.prsKnown !== false && revisions(before) !== revisions(after)) {
-      add('lgtm_invalidated_by_revision', config.ownerRecipients, '交付版本已变化，旧审查认可不再适用', { kind: 'revision', value: revisions(after) });
+    // The author asking for review again (normally after pushing a new revision) clears the lgtm.
+    if (before.lgtm && !after.lgtm && rerequested) {
+      add('lgtm_invalidated_by_revision', reviewers(after), '作者重新请求审查，旧审查认可已失效', { kind: 'no-lgtm' });
     }
   }
   if (before.blockers.length && !after.blockers.length && after.status === 'none') {

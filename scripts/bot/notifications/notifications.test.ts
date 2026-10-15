@@ -83,10 +83,12 @@ test('blocker reopen prompts active workers; last run close prompts parent, clos
   assert.deepEqual(candidates(run,{...run,parentOpen:false},cause({kind:'closed'}),config()).map(c=>c.key),['parent_closed_with_open_runs']);
 });
 test('lgtm cleanup on a new request is not withdrawal; PR state itself never sends',()=>{
-  const s=state({status:'in-review',lgtm:true});
+  const s=state({parent:10,status:'in-review',lgtm:true,assignees:['carol']});
   const next={...s,lgtm:false};
-  assert.equal(candidates(s,next,cause(),config())[0].key,'lgtm_withdrawn');
-  assert.deepEqual(candidates(s,next,cause({requests:['status:in-review']}),config()).map(c=>c.key),['review_requested_again_same_revision']);
+  assert.deepEqual(candidates(s,next,cause(),config()).map(c=>[c.key,c.recipient]),[['lgtm_withdrawn','alice']]);
+  // The author asking again clears the lgtm: reviewers are told it no longer holds, not that it was withdrawn.
+  assert.deepEqual(candidates(s,next,cause({actor:'alice',requests:['status:in-review']}),config()).map(c=>[c.key,c.recipient]),
+    [['review_requested_again_same_revision','owner'],['review_requested_again_same_revision','carol'],['lgtm_invalidated_by_revision','carol']]);
   const a={key:'ora-space/cloud#1',sha:'abc123',state:'open' as const,url:'https://github.com/ora-space/cloud/pull/1'};
   const b={...a,key:'ora-space/cloud#2'};
   const merged=candidates({...s,prs:[a,b]},{...s,prs:[{...a,state:'merged'},b]},cause({kind:'pr'}),config());
