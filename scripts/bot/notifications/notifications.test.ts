@@ -43,7 +43,9 @@ test('review pre-registration silent; assigned during R only new reviewer; no se
   const run=state({parent:10});
   assert.equal(candidates(run,{...run,assignees:['carol']},cause(),config()).length,0);
   const next={...run,status:'in-review' as const,assignees:['carol','alice']};
-  assert.deepEqual(candidates(run,next,cause(),config()).map(x=>x.recipient),['owner','carol']);
+  // A run with reviewers goes to them, not the owner; one without goes to the owner.
+  assert.deepEqual(candidates(run,next,cause(),config()).map(x=>x.recipient),['carol']);
+  assert.deepEqual(candidates(run,{...next,assignees:['alice']},cause(),config()).map(x=>x.recipient),['owner']);
   const added=candidates({...next,assignees:['carol']},{...next,assignees:['carol','dave']},cause(),config());
   assert.deepEqual(added.map(x=>x.recipient),['dave']);
   assert.equal(stillValid(added[0],{...next,assignees:[]}),false);
@@ -82,13 +84,25 @@ test('blocker reopen prompts active workers; last run close prompts parent, clos
   const run=state({parent:10,author:'worker',status:'in-review'});
   assert.deepEqual(candidates(run,{...run,parentOpen:false},cause({kind:'closed'}),config()).map(c=>c.key),['parent_closed_with_open_runs']);
 });
+test('the owner hears of a reviewed run once the last reviewer goes, and a queued review request follows',async()=>{
+  const c=config(),store=memory(),before=state({parent:10,status:'in-review',assignees:['carol']});
+  const after={...before,assignees:[]};
+  assert.deepEqual(candidates(before,after,cause({actor:'carol'}),c).map(x=>[x.key,x.recipient]),
+    [['reviewer_left_during_review','alice'],['last_reviewer_removed','owner']]);
+  assert.equal(candidates(before,{...after,assignees:['dave']},cause(),c).some(x=>x.key==='last_reviewer_removed'),false);
+  // A request queued for the reviewer goes to nobody once they leave; one for the owner would wait for that.
+  enqueue(store,[state({parent:10})],[before],cause(),c);
+  const sent:string[]=[];
+  await flush(store,c,{identity:async(u:string)=>u,send:async(to:string)=>{sent.push(to);}},()=>after,()=>{});
+  assert.deepEqual(sent,[]);
+});
 test('lgtm cleanup on a new request is not withdrawal; PR state itself never sends',()=>{
   const s=state({parent:10,status:'in-review',lgtm:true,assignees:['carol']});
   const next={...s,lgtm:false};
   assert.deepEqual(candidates(s,next,cause(),config()).map(c=>[c.key,c.recipient]),[['lgtm_withdrawn','alice']]);
   // The author asking again clears the lgtm: reviewers are told it no longer holds, not that it was withdrawn.
   assert.deepEqual(candidates(s,next,cause({actor:'alice',requests:['status:in-review']}),config()).map(c=>[c.key,c.recipient]),
-    [['review_requested_again_same_revision','owner'],['review_requested_again_same_revision','carol'],['lgtm_invalidated_by_revision','carol']]);
+    [['review_requested_again_same_revision','carol'],['lgtm_invalidated_by_revision','carol']]);
   const a={key:'ora-space/cloud#1',sha:'abc123',state:'open' as const,url:'https://github.com/ora-space/cloud/pull/1'};
   const b={...a,key:'ora-space/cloud#2'};
   const merged=candidates({...s,prs:[a,b]},{...s,prs:[{...a,state:'merged'},b]},cause({kind:'pr'}),config());

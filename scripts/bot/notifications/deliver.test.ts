@@ -72,7 +72,7 @@ test('closing a decision tells the author of a promoted preflight once, on the r
   assert.match(sent[0].text, /#4 运行：实现[\s\S]*由 preflight 转为正式执行/);
 });
 
-test('lgtm reaches the run author; the author asking again tells the reviewer it no longer holds', async () => {
+test('lgtm reaches the owner, not the author; the author asking again tells the reviewer it no longer holds', async () => {
   const f = fixture({ number: 10, id: 1010, title: '父事项' });
   const run = { ...structuredClone(f.issue), number: 11, id: 1011, title: '运行：前端', body: 'Parent: #10',
     assignees: [{ login: 'bob' }], labels: [{ name: 'run' }, { name: 'status:in-review' }] };
@@ -83,8 +83,8 @@ test('lgtm reaches the run author; the author asking again tells the reviewer it
     issue: structuredClone(f.items.get(11)), sender: { login, type: 'User' }, comment: { id, created_at: '2026-10-15T00:00:00Z', body } } },
     f.gh, 'ora-space/circus', config(), all, () => {});
   await comment('bob', '审过 abc1234\n/label review:lgtm', 30);
-  assert.deepEqual(sent.map(m => m.to), ['alice']);
-  assert.match(sent[0].text, /审查认可/);
+  assert.deepEqual(sent.map(m => m.to), ['owner']);
+  assert.match(sent[0].text, /【交付已获认可，待你决定合并】[\s\S]*@bob 审过这份交付[\s\S]*确认 PR 的 head 仍是它，再决定是否合并/);
   sent.length = 0;
   await comment('alice', '/label status:in-review', 31);
   assert.deepEqual(f.items.get(11)!.labels.map(l => l.name), ['run', 'status:in-review']);

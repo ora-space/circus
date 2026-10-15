@@ -15,7 +15,8 @@ const notices: Record<string, Notice> = {
   reviewer_left_during_review: { heading: '请调整审查安排', change: '一位审查人退出了本轮审查。', action: '确认是否需要安排其他审查人；负责人仍可审查。' },
   participant_removed: { heading: '协作指派已撤回', change: '你在此事项中的协作指派已被移除。', action: '查看调整说明，确认是否需要交接尚未完成的工作。' },
   reviewer_removed_during_review: { heading: '审查指派已撤回', change: '你在此执行任务中的审查指派已被移除。', action: '查看调整说明，确认本轮审查安排。' },
-  lgtm_added: { heading: '交付已获审查认可', change: '你的交付已获得审查认可。', action: '查看审查意见；合并由负责人决定，无需额外操作。' },
+  last_reviewer_removed: { heading: '请审查交付', change: '执行任务已没有审查人，交付改由你审查。', action: '查看交付及关联 PR，决定是否合并。' },
+  lgtm_added: { heading: '交付已获认可，待你决定合并', change: '审查人认可了这份交付。', action: '核对审过的版本，决定是否合并。' },
   lgtm_withdrawn: { heading: '审查认可已撤回', change: '你的交付此前获得的审查认可已被撤回。', action: '查看撤回原因和审查意见，按需修改后重新请求审查。' },
   lgtm_invalidated_by_revision: { heading: '请重新审查', change: '作者重新请求审查，你此前的认可已失效。', action: '按当前版本重新审查，在 GitHub 回复审查意见。' },
   preflight_promoted: { heading: '决策已定，请核对交付', change: '所属事项的依赖都已关闭，执行任务由 preflight 转为正式执行。', action: '对照依赖的结论核对 PR：需要修改就改完后重新请求审查。' },
@@ -69,7 +70,8 @@ function notice(c: Candidate): Notice {
     reviewer_left_during_review: `${actor}退出了本轮审查。`,
     participant_removed: `${actor}撤回了你在此事项中的协作指派。`,
     reviewer_removed_during_review: `${actor}撤回了你在此执行任务中的审查指派。`,
-    lgtm_added: `${actor}给你的交付打了审查认可（lgtm）。`,
+    last_reviewer_removed: `${actor}移除了最后一位审查人，执行任务已没有审查人，交付改由你审查。`,
+    lgtm_added: `${actor}审过这份交付并打了审查认可（lgtm），等你决定是否合并。`,
     lgtm_withdrawn: `${actor}撤回了对你交付的审查认可。`,
     lgtm_invalidated_by_revision: `${actor}重新请求审查，你此前给出的认可已失效，需要你重新 review 当前版本。`,
     preflight_promoted: `${parent}的依赖都已关闭，此执行任务已由 preflight 转为正式执行。`,
@@ -96,7 +98,7 @@ function nextStep(c: Candidate, n: number): string | undefined {
   const target = c.key.startsWith('statusTransitions.') ? c.key.split('->')[1]
     : c.key.startsWith('initialStatus.') ? c.key.slice('initialStatus.'.length)
     : c.key === 'owner_request_updated' ? 'needs-owner' : c.key === 'author_request_updated' ? 'needs-author'
-    : c.key.startsWith('review_requested_') || c.key === 'reviewer_assigned_during_review' || c.key === 'lgtm_invalidated_by_revision' ? 'in-review'
+    : c.key.startsWith('review_requested_') || ['reviewer_assigned_during_review', 'lgtm_invalidated_by_revision', 'last_reviewer_removed'].includes(c.key) ? 'in-review'
     : undefined;
   const reviewer = c.guard.kind === 'status-reviewer' || c.key === 'reviewer_assigned_during_review' || c.key === 'lgtm_invalidated_by_revision';
   if (target === 'needs-author') {
@@ -118,7 +120,8 @@ function nextStep(c: Candidate, n: number): string | undefined {
     case 'participant_removed': case 'reviewer_removed_during_review':
       return `停下这部分工作；有还没交接的进展，在 #${n} 评论说明。`;
     case 'lgtm_added':
-      return '不需要操作，等 owner 决定是否合并。';
+      return `看 #${n} 里 lgtm 评论写明的 commit SHA，确认 PR 的 head 仍是它，再决定是否合并：合并只合 PR、不关 issue，`
+        + `合并后${comment(n, '/label status:needs-author')}让作者收尾；需要修改也这样交回，并写明要求。`;
     case 'lgtm_withdrawn':
       return `看 PR 上的 review 意见，修改后${comment(n, '/label status:in-review')}请人复审。`;
     case 'preflight_promoted':

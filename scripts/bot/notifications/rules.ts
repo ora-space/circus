@@ -30,6 +30,8 @@ const executors = (s: Snapshot) => {
   const runs = active(s).map(r => r.author);
   return runs.length ? runs : s.parent !== null ? [s.author] : s.assignees.length ? s.assignees : [s.author];
 };
+// A run with reviewers is reviewed by them; the owner hears of it once it has an lgtm, or when no reviewer is left.
+export const reviewRecipients = (s: Snapshot, owners: string[]) => reviewers(s).length ? reviewers(s) : owners;
 export const revisions = (s: Snapshot) => hash(s.prs.map(p => [p.key, p.sha]).sort());
 export function candidates(before: Snapshot | undefined, after: Snapshot, cause: Cause, config: NotificationConfig): Candidate[] {
   if (!config.enabled || !cause.actor || cause.actor.endsWith('[bot]')) return [];
@@ -55,7 +57,7 @@ export function candidates(before: Snapshot | undefined, after: Snapshot, cause:
   };
   const handoff = (key: string) => {
     const users = after.status === 'needs-author' ? [after.author] : after.status === 'in-review'
-      ? [...config.ownerRecipients, ...reviewers(after)] : config.ownerRecipients;
+      ? reviewRecipients(after, config.ownerRecipients) : config.ownerRecipients;
     const reason = after.status === 'needs-author' ? '请跟进已回复的结论或修改要求'
       : after.status === 'in-review' ? '请审查当前交付（是否合并仍由 owner 决定）' : '请回复、决策或授权';
     add(key, users, reason, { kind: 'status', value: after.status, handoffId: after.handoffId,
@@ -98,9 +100,13 @@ export function candidates(before: Snapshot | undefined, after: Snapshot, cause:
       : self ? 'participant_left' : 'participant_removed', self ? [after.author] : [user],
       self ? '协作者已退出，请确认剩余安排' : '你此前的执行或审查指派已撤回', { kind: 'removed', value: user.toLowerCase() });
   }
-  // lgtm news goes to the run's author; a cleared lgtm asks its reviewers to look again.
+  if (after.parent !== null && before.status === 'in-review' && after.status === 'in-review' && reviewers(before).length && !reviewers(after).length) {
+    add('last_reviewer_removed', config.ownerRecipients, '运行已没有 reviewer，交付改由 owner 审查', { kind: 'unreviewed' });
+  }
+  // An lgtm asks the owner to decide on merging; a withdrawn lgtm is news for the run's author;
+  // a cleared lgtm asks its reviewers to look again.
   if (after.status === 'in-review' && after.parent !== null) {
-    if (!before.lgtm && after.lgtm) add('lgtm_added', [after.author], '已有审查认可，合并由 owner 决定', { kind: 'lgtm', value: revisions(after) });
+    if (!before.lgtm && after.lgtm) add('lgtm_added', config.ownerRecipients, '已有审查认可，请决定是否合并', { kind: 'lgtm', value: revisions(after) });
     const rerequested = before.status === after.status && cause.requests?.includes('status:in-review');
     if (before.lgtm && !after.lgtm && before.status === after.status && !rerequested) {
       add('lgtm_withdrawn', [after.author], '审查认可已撤回', { kind: 'no-lgtm' });
@@ -153,6 +159,7 @@ export function stillValid(c: Candidate, s: Snapshot): boolean {
     case 'assigned': return s.assignees.map(u => u.toLowerCase()).includes(c.recipient);
     case 'reviewer': return s.status === 'in-review' && s.assignees.map(u => u.toLowerCase()).includes(c.recipient);
     case 'removed': return !s.assignees.map(u => u.toLowerCase()).includes(c.guard.value!);
+    case 'unreviewed': return s.status === 'in-review' && !reviewers(s).length;
     case 'lgtm': return s.status === 'in-review' && s.lgtm && revisions(s) === c.guard.value;
     case 'no-lgtm': return s.status === 'in-review' && !s.lgtm;
     case 'revision': return s.status === 'in-review' && revisions(s) === c.guard.value;

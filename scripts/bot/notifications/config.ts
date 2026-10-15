@@ -3,7 +3,7 @@ export type Status = typeof STATUSES[number];
 export const EVENTS = [
   'owner_request_updated', 'author_request_updated', 'review_requested_for_new_revision', 'review_requested_again_same_revision',
   'participant_assigned', 'reviewer_assigned_during_review', 'participant_left', 'reviewer_left_during_review',
-  'participant_removed', 'reviewer_removed_during_review', 'lgtm_added', 'lgtm_withdrawn', 'lgtm_invalidated_by_revision',
+  'participant_removed', 'reviewer_removed_during_review', 'last_reviewer_removed', 'lgtm_added', 'lgtm_withdrawn', 'lgtm_invalidated_by_revision',
   'last_blocker_closed', 'last_blocker_removed', 'execution_resumed_after_handoff', 'blocker_added', 'blocker_reopened',
   'blocker_replaced', 'issue_reopened', 'run_reopened', 'parent_summary_invalidated_by_run_reopen',
   'run_reopened_with_closed_parent', 'last_run_closed', 'parent_closed_with_open_runs', 'preflight_promoted', 'pr_merged',

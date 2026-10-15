@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, openSync, closeSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { hash, revisions, stillValid, type Candidate, type Cause, type Snapshot } from './rules.ts';
+import { hash, reviewRecipients, revisions, stillValid, type Candidate, type Cause, type Snapshot } from './rules.ts';
 import type { NotificationConfig } from './config.ts';
 import { candidates } from './rules.ts';
 import { formatMessage } from './message.ts';
@@ -106,10 +106,11 @@ export async function flush(
       const owners = config.ownerRecipients.map(u=>u.toLowerCase());
       if (s.status === 'needs-author' && s.author.toLowerCase() !== c.recipient) return false;
       if (s.status === 'needs-owner' && !owners.includes(c.recipient)) return false;
-      if (s.status === 'in-review' && !owners.includes(c.recipient) && !reviewer) return false;
+      if (s.status === 'in-review' && !reviewRecipients(s, owners).map(u=>u.toLowerCase()).includes(c.recipient)) return false;
     }
-    // lgtm news is for the run's author; a cleared lgtm is for the reviewers still assigned.
-    if (['lgtm_added','lgtm_withdrawn'].includes(c.key) && s.author.toLowerCase() !== c.recipient) return false;
+    // An lgtm is for the owner; a withdrawn one for the run's author; a cleared one for the reviewers still assigned.
+    if (c.key === 'lgtm_added' && !config.ownerRecipients.map(u=>u.toLowerCase()).includes(c.recipient)) return false;
+    if (c.key === 'lgtm_withdrawn' && s.author.toLowerCase() !== c.recipient) return false;
     if (c.key === 'lgtm_invalidated_by_revision' && !reviewer) return false;
     if (c.guard.revision && s.prsKnown === false) throw new Error('无法核实待审版本，保留通知待重试');
     return stillValid(c, s);

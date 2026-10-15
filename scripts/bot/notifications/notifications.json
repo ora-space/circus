@@ -36,6 +36,7 @@
     "reviewer_left_during_review": true,
     "participant_removed": true,
     "reviewer_removed_during_review": true,
+    "last_reviewer_removed": true,
     "lgtm_added": true,
     "lgtm_withdrawn": true,
     "lgtm_invalidated_by_revision": true,

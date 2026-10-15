@@ -11,7 +11,7 @@
 | `ownerRecipients` | [] | 接收决策/审查通知的 owner GitHub login，不授予权限；生产用 Actions Variable `CIRCUS_OWNER_RECIPIENTS` 覆盖 |
 | `initialStatus` | 见下表 | 创建时初始交接，独立于后续转移 |
 | `statusTransitions` | 见矩阵 | open issue 具体前后状态 |
-| `events` | 见事件表 | 26 个协作事件；3 个 PR 状态旧字段保留但停用 |
+| `events` | 见事件表 | 27 个协作事件；3 个 PR 状态旧字段保留但停用 |
 
 将单项改为 false 即关闭，缺项也关闭；不提供通配符和旧8类聚合开关。读取器须拒绝未知字段/事件/状态对、错误类型和未支持渠道；启用时验证 owner 名单、凭据及映射。设置经 PR 修改。
 
@@ -22,7 +22,7 @@
 | 配置路径 | 默认 | 收件人 | 条件 |
 |---|---|---|---|
 | `initialStatus.needs-owner` | 开 | owner | 明确请求另一位owner决策 |
-| `initialStatus.in-review` | 开 | owner；运行reviewer | 已明确交付待审 |
+| `initialStatus.in-review` | 开 | 运行reviewer；没有reviewer时owner | 已明确交付待审 |
 | `initialStatus.needs-author` | 关 | 作者 | 创建者就是作者，固定排除自通知 |
 
 创建不另匹配none→目标状态，避免两个开关控制一次交接；初始none或分类标签静默。
@@ -38,7 +38,7 @@
 | in-review | 关 | 开 | 关 | 开 |
 | needs-author | 关 | 开 | 开 | 关 |
 
-进入needs-owner通知owner；进入in-review通知owner及运行reviewer；进入needs-author通知作者。普通issue的assignee是参与者，运行assignee是reviewer，作者不能审自己的运行。
+进入needs-owner通知owner；进入in-review时，有reviewer的运行只通知reviewer，owner等lgtm或reviewer被移空时再收到；没有reviewer的运行和普通issue通知owner；进入needs-author通知作者。普通issue的assignee是参与者，运行assignee是reviewer，作者不能审自己的运行。
 
 对角线为关闭：状态值不变时没有转移，明确的新请求由下表控制。退回none也关闭：撤标签不自动产生待办，不等于PR合并；真正恢复执行使用execution_resumed_after_handoff。当前设计中这7格不允许开启，读取器遇到true应报错；其他9格可分别控制。
 
@@ -52,15 +52,16 @@
 |---|---|---|---|
 | `owner_request_updated` | 开 | owner | needs-owner不变，明确提出新的决策请求 |
 | `author_request_updated` | 开 | 作者 | needs-author不变，明确交回新的要求 |
-| `review_requested_for_new_revision` | 开 | owner/reviewer | in-review不变，明确请求审查新PR/head版本 |
-| `review_requested_again_same_revision` | 开 | owner/reviewer | in-review不变，同版本明确发起新一轮请求；原请求重放不算 |
+| `review_requested_for_new_revision` | 开 | 运行reviewer；没有reviewer时owner | in-review不变，明确请求审查新PR/head版本 |
+| `review_requested_again_same_revision` | 开 | 运行reviewer；没有reviewer时owner | in-review不变，同版本明确发起新一轮请求；原请求重放不算 |
 | `participant_assigned` | 开 | 新增参与者 | 普通issue实际新增协作指派 |
 | `reviewer_assigned_during_review` | 开 | 新增reviewer | 运行已待审时增加reviewer；预登记静默 |
 | `participant_left` | 开 | 事项作者 | 参与者自行退出实际活动协作，需确认安排 |
 | `reviewer_left_during_review` | 开 | 运行作者 | 活动reviewer自行退出，需确认安排；owner仍能审查 |
 | `participant_removed` | 开 | 被移除参与者 | 他人移除已有活动执行待办的参与者 |
 | `reviewer_removed_during_review` | 开 | 被移除reviewer | 他人移除已有活动审查待办的reviewer |
-| `lgtm_added` | 开 | 运行作者 | 运行待审时新增review:lgtm；合并仍由owner决定 |
+| `last_reviewer_removed` | 开 | owner | 运行待审时最后一位reviewer退出或被移除，交付改由owner审查 |
+| `lgtm_added` | 开 | owner | 运行待审时新增review:lgtm，请owner决定是否合并；不通知作者 |
 | `lgtm_withdrawn` | 开 | 运行作者 | 明确撤销lgtm；交接或关闭引起的清理不算 |
 | `lgtm_invalidated_by_revision` | 开 | reviewer | 作者重新请求审查（通常推了新版本）清掉了已有lgtm；不逐push催审 |
 | `last_blocker_closed` | 开 | 实际等待执行者 | 最后未完成依赖合法关闭，包括运行issue |
@@ -124,7 +125,7 @@ run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控�
 
 九种进入 needs-owner/in-review/needs-author 的不同状态转移均覆盖；对角线及退回 none 的七格固定静默。创建使用 initialStatus，不能混用 none→目标状态开关。同状态明确请求使用对应事件开关，不能把普通评论当新请求。配置仅决定是否允许通知，仍须满足真实事件、权限、角色和自通知条件。
 
-下表列明全部 26 个事件的证据要求。直接发送只拥有本次前后快照；“需要历史”的项目不能仅因为开关 true 就保证生产触发，不为补齐表格猜测历史或广播。
+下表列明全部 27 个事件的证据要求。直接发送只拥有本次前后快照；“需要历史”的项目不能仅因为开关 true 就保证生产触发，不为补齐表格猜测历史或广播。
 
 | 事件键 | 直接发送的条件/边界 |
 |---|---|
@@ -138,7 +139,8 @@ run重开可同时恢复执行及撤回parent旧收尾判断，两项分别控�
 | reviewer_left_during_review | 活动 reviewer 自行退出，提醒运行作者调整安排 |
 | participant_removed | 他人撤回活动执行指派，提醒被撤回者 |
 | reviewer_removed_during_review | 他人撤回活动审查指派，提醒被撤回者 |
-| lgtm_added | 实际新增审查认可，提醒运行作者 |
+| last_reviewer_removed | 待审运行的 reviewer 由有变无，提醒 owner 接手审查 |
+| lgtm_added | 实际新增审查认可，提醒 owner 决定是否合并 |
 | lgtm_withdrawn | 明确撤回审查认可，提醒运行作者；关闭/交接引起的自动清理静默 |
 | lgtm_invalidated_by_revision | 作者重新打 status:in-review 时已有 lgtm 被清除，提醒 reviewer；本次前后快照即可判定 |
 | last_blocker_closed | 最后未完成依赖合法关闭，且当前无交接等待；关闭不等于工作完成 |
