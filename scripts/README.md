@@ -86,12 +86,14 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 ### preflight：依赖未完成时先做
 
-parent 还在等未关闭的依赖（典型是未拍板的 `type:decision`），但 owner 同意先开发、先提 PR 时，用 `node scripts/cli.ts run N --preflight` 开运行 issue，正文首行是 `Parent: #N (preflight)`。
+parent 还在等未关闭的依赖，但要先开发、先提 PR 时，用 `node scripts/cli.ts run N --preflight` 开运行 issue，正文首行是 `Parent: #N (preflight)`。
+
+**决策阻塞开发。** 和某个 `type:decision` 相关的 issue 都必须依赖它（`依赖：#N` 或 `/depend #N`）。parent 依赖的决策还没关闭时只能开 preflight：`run` 不加 `--preflight` 会报错；绕过 CLI 开的普通运行，bot 也会打成 `preflight`。依赖的是普通 issue 时，普通运行和 preflight 都可以。
 
 - bot 打 `preflight`，不打 `run`，两者互斥；其余和普通运行 issue 一样（子 issue、assignee、review）。parent 没有未关闭的依赖时，bot 按普通运行打 `run`。
 - 可以开发、提 PR、请人 review；owner 的 `brief` 标出 parent 还在等哪些依赖，看板上 parent 显示为 Preflight 而不是 Blocked。合并仍由 owner 判断，一般等依赖关闭。
 - parent 的依赖全部关闭（或被 `/undepend` 移除）时，bot 把 `preflight` 换成 `run`，提醒作者对照结论核对 PR：有出入先改，改完重新打 `status:in-review`。
-- 不要在 preflight 里替依赖做决定：它只是先把实现做出来，决策照样在依赖的 issue 里由 owner 拍板。parent 必须是未关闭的普通 issue，不能是另一个运行 issue；不合法时 bot 在运行 issue 里提示，不打 label、不挂子 issue。parent 的 label 仍由 parent 的作者或 owner 决定，运行 issue 的作者只在自己的运行 issue 里汇报。
+- 不要在 preflight 里替依赖做决定：它只是先把实现做出来，决策照样在依赖的 issue 里由 owner 拍板。parent 必须是未关闭的普通 issue，不能是另一个运行 issue，也不能是 `type:decision`（决策由 owner 在 issue 里拍板，不开运行）；不合法时 bot 在运行 issue 里提示，不打 label、不挂子 issue。parent 的 label 仍由 parent 的作者或 owner 决定，运行 issue 的作者只在自己的运行 issue 里汇报。
 
 ## 依赖和总事项
 
@@ -194,7 +196,7 @@ circus/
 
 互斥的 label 族（每个 issue 至多一个值）在设置新值时自动替换旧值。
 
-- **`type:decision` 有长期价值。** 决策 issue 关闭后，标题和 `## 总结` 写明结论和理由，以后要查"当初为什么这么定"，用 `gh issue list -R ora-space/circus --state closed --label type:decision --search "<关键词>"` 就能找到。所以凡是要 owner 拍板的，都开成 `type:decision`：正文列选项、依据、代价，同时打 `status:needs-owner`。
+- **`type:decision` 有长期价值。** 决策 issue 关闭后，标题和 `## 总结` 写明结论和理由，以后要查"当初为什么这么定"，用 `gh issue list -R ora-space/circus --state closed --label type:decision --search "<关键词>"` 就能找到。所以凡是要 owner 拍板的，都开成 `type:decision`：正文列选项、依据、代价，同时打 `status:needs-owner`。决策 issue 不开运行；要实现结论的 issue 依赖它，决策关闭前只能开 preflight（见"preflight"）。
 - **status 只表示"球在谁手里"。** 其余状态不用 label：在做 = 有未关闭的运行 issue，完成 = issue 已关闭。issue 关闭时 bot 移除它的 `status:*` 和 `review:*`。
   - 等 owner 的事，作者给自己的 issue 打 `status:needs-owner`（PR 待审打 `status:in-review`）；运行 issue 的作者改不了 parent，就打在自己的运行 issue 上。
   - owner 回复、拍板或提出要求后，打 `/label status:needs-author`（reviewer 在别人的运行 issue 上也可以，见"review 运行 issue"），它会替换掉 `needs-owner` 或 `in-review`，作者的 `brief` 会把这个 issue 放进"等我跟进"。只是顺手评论、不需要作者动作时，直接 `/unlabel status:needs-owner`。
@@ -211,7 +213,7 @@ circus/
 | `whoami` | 当前账号是 owner 还是成员，也就是和 agent 对话的人 |
 | `brief [--mine]` | 先说明身份，再列未关闭的 issue，分组，空组不显示：待关闭（我创建的，关联 PR 已合并、被 bot 重新打开过、或 parent 已关闭的运行 issue，最优先处理）；等我跟进（我创建的 `status:needs-author`）；等 owner 的（owner 看到所有人的 `status:needs-owner` 和 `status:in-review`，已 `review:lgtm` 的在前；成员只看到自己创建的 `status:needs-owner`）；需要 review（只有成员有：assign 给我的、`status:in-review` 的运行 issue）；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
 | `new --title T [--label L]... [--depend N]... [--epic N] [--body-file F]` | 新建 issue；`--label`、`--depend` 写进正文，由 bot 打上、设为依赖；`--epic` 写"总事项：#N" |
-| `run N [--preflight] [--title T] [--body-file F]` | 为 #N 开运行 issue；`--preflight` 在 #N 依赖未完成时先做 |
+| `run N [--preflight] [--title T] [--body-file F]` | 为 #N 开运行 issue；`--preflight` 在 #N 依赖未完成时先做。#N 是 `type:decision` 时拒绝，#N 依赖未关闭的决策时必须加 `--preflight` |
 | `updates N [--all]` | 你上次发言之后的动静：别人的评论、斜杠命令、status 轨迹、引用的 PR、关闭和重新打开、有更新的运行 issue |
 | `show N` | 完整输出 issue 和全部评论 |
 | `label N [+]L... -L... [--sha C]` | 评论 `/label`、`/unlabel`；`--sha` 在评论里写明审过的 commit，打 `review:lgtm` 时要带 |
@@ -245,7 +247,7 @@ Priority 字段来自 `priority:*`。owner 的 `brief` 已经列出所有人在�
 
 | 事件 | 处理 |
 |---|---|
-| issue 打开 | 打上正文里写的 label、设上 `依赖：` 行里的依赖，同步看板；运行 issue 另打 `run`（parent 有未完成的依赖且首行标了 `(preflight)` 时打 `preflight`）、挂为 parent 的子 issue、作者不在 parent 的 assignee 里时补上，parent 还有未完成的依赖时提醒 |
+| issue 打开 | 打上正文里写的 label、设上 `依赖：` 行里的依赖，同步看板；运行 issue 另打 `run`（parent 依赖未关闭的决策，或有未完成的依赖且首行标了 `(preflight)` 时打 `preflight`；parent 是 `type:decision` 时只留言、不打 label 不挂子 issue）、挂为 parent 的子 issue、作者不在 parent 的 assignee 里时补上，parent 还有未完成的依赖时提醒 |
 | 手动打上 label | 撤销并留言；打开后一分钟内、且正文里写了的 label 除外（`gh issue create --label` 产生的事件），运行 issue 上与首行相符的 `run` 或 `preflight` 除外 |
 | 手动移除 label | 恢复并留言 |
 | 手动 assign / unassign | 撤销并留言 |

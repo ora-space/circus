@@ -7,7 +7,8 @@
 //     the summary says why), and tells dependents when a blocker closes,
 //   - reminds authors to close their issues when a circus PR referencing them is merged,
 //   - links runs to their parent and reports their summary back (see lib/run.ts),
-//   - turns preflight runs into runs once their parent has no open dependencies,
+//   - refuses runs of decisions, makes runs of issues waiting on a decision preflights, and
+//     turns preflights into runs once their parent has no open dependencies,
 //   - lets others review runs awaiting review (review:lgtm, status:needs-author),
 //   - drops status and review labels on close and mirrors issues onto the board (see lib/board.ts);
 //     nobody else writes to the board.
@@ -16,7 +17,7 @@ import type { GitHub, Issue } from './github.ts';
 import { boardValues, type Board } from '../lib/board.ts';
 import { dependsFromBody } from '../lib/deps.ts';
 import { applyLabels, isBotLabel, isKnown, labelsFromBody } from '../lib/labels.ts';
-import { isPreflightBody, parentOf, PREFLIGHT_LABEL, RUN_LABEL } from '../lib/run.ts';
+import { isPreflightBody, parentOf, PREFLIGHT_LABEL, RUN_LABEL, runKind } from '../lib/run.ts';
 import { parseSlash, type SlashCommand } from '../lib/slash.ts';
 import { closedForAuthor, hasSummary, splitSummary, SUMMARY_HEADING } from '../lib/summary.ts';
 
@@ -190,11 +191,16 @@ function openRun(gh: GitHub, run: Issue, parent: number): number | null {
     gh.comment(run.number, `#${parent} 不是未关闭的普通 issue，不能作为 parent。请关闭本 issue，修正首行的 \`Parent: #N\` 后重新开。`);
     return null;
   }
-  const waiting = openRefs(gh.blockedBy(parent));
-  // A preflight only makes sense while the parent still waits on something.
-  const preflight = isPreflightBody(run.body) && waiting.length > 0;
+  const blockers = gh.blockedBy(parent);
+  const kind = runKind(item, blockers, isPreflightBody(run.body));
+  if ('refused' in kind) {
+    gh.comment(run.number, `${kind.refused}请关闭本 issue。`);
+    return null;
+  }
+  const waiting = openRefs(blockers);
+  const preflight = kind.label === PREFLIGHT_LABEL;
   const current = names(gh.getIssue(run.number));
-  const next = applyLabels(current, [...labelsFromBody(run.body), preflight ? PREFLIGHT_LABEL : RUN_LABEL], []);
+  const next = applyLabels(current, [...labelsFromBody(run.body), kind.label], []);
   if (next.join('\n') !== current.join('\n')) gh.setLabels(run.number, next);
   gh.addSubIssue(parent, run.id);
   // Fallback for runs opened without a prior /assign on the parent.
@@ -202,7 +208,13 @@ function openRun(gh: GitHub, run: Issue, parent: number): number | null {
   if (!logins(item).includes(author) && !gh.addAssignees(parent, [author]).includes(author)) {
     gh.comment(run.number, `无法把 @${author} assign 到 #${parent}（不是协作者？）。`);
   }
-  if (preflight) {
+  if (kind.decisions.length) {
+    gh.comment(
+      run.number,
+      `#${parent} 依赖未拍板的决策 ${kind.decisions.map((d) => `#${d}`).join(' ')}，只能开 preflight，已打上 \`${PREFLIGHT_LABEL}\`。` +
+        `可以先开发、提 PR、请人 review，合并要等依赖关闭后按结论核对；依赖都关闭后 bot 会换成 \`${RUN_LABEL}\`。`,
+    );
+  } else if (preflight) {
     gh.comment(
       run.number,
       `preflight：#${parent} 还在等 ${waiting.join(' ')}。可以先开发、提 PR、请人 review，合并要等依赖关闭后按结论核对；` +

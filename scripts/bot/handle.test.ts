@@ -530,6 +530,25 @@ test('/undepend of the last blocker turns preflights into runs; a remaining one 
   assert.deepEqual(f.log.slice(0, 2), ['undepend 5', '#2 labels run']);
 });
 
+test('a decision has no runs, preflight or not', () => {
+  for (const body of ['Parent: #1', 'Parent: #1 (preflight)']) {
+    const f = fakeGitHub({ labels: [{ name: 'type:decision' }] });
+    opened(f, f.add({ number: 2, user: { login: 'bob' }, body }));
+    assert.equal(f.log.length, 1);
+    assert.match(f.log[0], /^#2 comment #1 是 type:decision，不能开运行 issue.*请关闭本 issue。$/);
+  }
+});
+
+test('a plain run of an issue waiting on an open decision becomes a preflight', () => {
+  const f = fakeGitHub({ assignees: [{ login: 'bob' }] });
+  f.add({ number: 3, labels: [{ name: 'type:decision' }] });
+  f.gh.addBlockedBy(1, 1003);
+  f.log.length = 0;
+  opened(f, f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1' }));
+  assert.equal(f.log[0], '#2 labels preflight');
+  assert.match(f.log.at(-1)!, /^#2 comment #1 依赖未拍板的决策 #3，只能开 preflight，已打上 `preflight`。/);
+});
+
 test('preflight is kept on preflights, reverted elsewhere, and refused by commands', () => {
   const f = fakeGitHub();
   const run = f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1 (preflight)', labels: [{ name: 'preflight' }], updated_at: '2026-10-05T00:00:00Z' });
