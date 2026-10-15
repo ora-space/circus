@@ -73,7 +73,10 @@ export const FAMILIES: readonly LabelFamily[] = [
 ];
 
 // Labels without a value that only the bot sets and removes; no command can change them.
-export const BOT_LABELS = [{ name: 'run', description: '一次运行：正文首行 Parent: #N', color: '5319e7' }] as const;
+export const BOT_LABELS = [
+  { name: 'run', description: '一次运行：正文首行 Parent: #N', color: '5319e7' },
+  { name: 'preflight', description: '依赖未完成时先做的运行：正文首行 Parent: #N (preflight)；依赖都关闭后转为 run', color: 'd4c5f9' },
+] as const;
 
 export const isBotLabel = (label: string) => BOT_LABELS.some((l) => l.name === label);
 

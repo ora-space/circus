@@ -12,6 +12,12 @@ test('boardValues: open dependencies make Blocked, above Running but below statu
   assert.deepEqual(boardValues({ state: 'closed', labels: [] }, 0, 2), { Status: 'Done' });
 });
 
+test('boardValues: a preflight run on a blocked issue shows Preflight, below status labels', () => {
+  assert.deepEqual(boardValues({ state: 'open', labels: [] }, 1, 1, 1), { Status: 'Preflight' });
+  assert.deepEqual(boardValues({ state: 'open', labels: labels('status:in-review') }, 1, 1, 1), { Status: 'In Review' });
+  assert.deepEqual(boardValues({ state: 'open', labels: [] }, 1, 0, 1), { Status: 'Running' });
+});
+
 test('boardValues: closed > status label > open runs > Open; priority from its label', () => {
   assert.deepEqual(boardValues({ state: 'closed', labels: labels('status:needs-owner') }, 1), { Status: 'Done' });
   assert.deepEqual(boardValues({ state: 'open', labels: labels('status:in-review', 'priority:p1') }, 2), {
@@ -52,7 +58,7 @@ test('sync adds the item and sets each field; missing options only warn', () => 
   const warnings: string[] = [];
   const { ctx, calls } = fakeContext(graphqlStub([status, priority]));
   ghBoard(ctx.gh, 'ora-space', 4, (w) => warnings.push(w)).sync('ISSUE', { Status: 'Running', Priority: 'P3' });
-  assert.deepEqual(updates(calls), [{ p: 'P', i: 'I', f: 'FS', o: 's2' }]);
+  assert.deepEqual(updates(calls), [{ p: 'P', i: 'I', f: 'FS', o: 's3' }]);
   assert.match(warnings[0], /Priority 或选项 P3/);
   assert.deepEqual(calls[0].args, ['api', '-X', 'POST', 'graphql', '--input', '-']);
 });
@@ -60,7 +66,7 @@ test('sync adds the item and sets each field; missing options only warn', () => 
 test('sync falls back to the existing item when a concurrent add won', () => {
   const { ctx, calls } = fakeContext(graphqlStub([status], 'Content already exists in this project'));
   ghBoard(ctx.gh, 'ora-space', 4).sync('ISSUE', { Status: 'Done' });
-  assert.deepEqual(updates(calls), [{ p: 'P', i: 'I2', f: 'FS', o: 's6' }]);
+  assert.deepEqual(updates(calls), [{ p: 'P', i: 'I2', f: 'FS', o: 's7' }]);
 });
 
 test('the first sync fixes Status options and creates Priority, then reloads', () => {
@@ -72,7 +78,7 @@ test('the first sync fixes Status options and creates Priority, then reloads', (
   board.sync('B', { Status: 'Open' });
   const ops = calls.map((c) => /(organization|updateProjectV2Field\(|createProjectV2Field)/.exec(JSON.parse(c.input!).query)?.[1]).filter(Boolean);
   assert.deepEqual(ops, ['organization', 'updateProjectV2Field(', 'createProjectV2Field', 'organization']);
-  assert.deepEqual(warnings.slice(0, 2), ['看板 Status 选项已设为：Open, Blocked, Running, Needs Owner, In Review, Needs Author, Done', '看板已创建 Priority 字段']);
+  assert.deepEqual(warnings.slice(0, 2), ['看板 Status 选项已设为：Open, Blocked, Preflight, Running, Needs Owner, In Review, Needs Author, Done', '看板已创建 Priority 字段']);
 });
 
 test('fields already in shape are left alone', () => {

@@ -7,6 +7,8 @@
 //     the summary says why), and tells dependents when a blocker closes,
 //   - reminds authors to close their issues when a circus PR referencing them is merged,
 //   - links runs to their parent and reports their summary back (see lib/run.ts),
+//   - refuses runs of decisions, makes runs of issues waiting on a decision preflights, and
+//     turns preflights into runs once their parent has no open dependencies,
 //   - lets others review runs awaiting review (review:lgtm, status:needs-author),
 //   - drops status and review labels on close and mirrors issues onto the board (see lib/board.ts);
 //     nobody else writes to the board.
@@ -15,7 +17,7 @@ import type { GitHub, Issue } from './github.ts';
 import { boardValues, type Board } from '../lib/board.ts';
 import { dependsFromBody } from '../lib/deps.ts';
 import { applyLabels, isBotLabel, isKnown, labelsFromBody } from '../lib/labels.ts';
-import { parentOf, RUN_LABEL } from '../lib/run.ts';
+import { isPreflightBody, parentOf, PREFLIGHT_LABEL, RUN_LABEL, runKind } from '../lib/run.ts';
 import { parseSlash, type SlashCommand } from '../lib/slash.ts';
 import { closedForAuthor, hasSummary, splitSummary, SUMMARY_HEADING } from '../lib/summary.ts';
 
@@ -133,6 +135,7 @@ function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashC
         if (typeof blocker === 'string') errors.push(`${line}：${blocker}`);
         else gh.removeBlockedBy(issue.number, blocker.id);
       }
+      promotePreflights(gh, issue.number);
     } else {
       gh.removeAssignees(issue.number, cmd.args);
     }
@@ -174,7 +177,8 @@ function addDependencies(gh: GitHub, n: number, args: (string | number)[]): stri
 
 const openRefs = (issues: Issue[]) => issues.filter((i) => i.state === 'open').map((i) => `#${i.number}`);
 
-const expectedBotLabels = (issue: Issue) => (parentOf(issue.body) !== null ? [RUN_LABEL] : []);
+const runLabel = (body: string | null) => (isPreflightBody(body) ? PREFLIGHT_LABEL : RUN_LABEL);
+const expectedBotLabels = (issue: Issue) => (parentOf(issue.body) !== null ? [runLabel(issue.body)] : []);
 
 function openRun(gh: GitHub, run: Issue, parent: number): number | null {
   let item: Issue | null = null;
@@ -187,8 +191,16 @@ function openRun(gh: GitHub, run: Issue, parent: number): number | null {
     gh.comment(run.number, `#${parent} 不是未关闭的普通 issue，不能作为 parent。请关闭本 issue，修正首行的 \`Parent: #N\` 后重新开。`);
     return null;
   }
+  const blockers = gh.blockedBy(parent);
+  const kind = runKind(item, blockers, isPreflightBody(run.body));
+  if ('refused' in kind) {
+    gh.comment(run.number, `${kind.refused}请关闭本 issue。`);
+    return null;
+  }
+  const waiting = openRefs(blockers);
+  const preflight = kind.label === PREFLIGHT_LABEL;
   const current = names(gh.getIssue(run.number));
-  const next = applyLabels(current, [...labelsFromBody(run.body), RUN_LABEL], []);
+  const next = applyLabels(current, [...labelsFromBody(run.body), kind.label], []);
   if (next.join('\n') !== current.join('\n')) gh.setLabels(run.number, next);
   gh.addSubIssue(parent, run.id);
   // Fallback for runs opened without a prior /assign on the parent.
@@ -196,8 +208,27 @@ function openRun(gh: GitHub, run: Issue, parent: number): number | null {
   if (!logins(item).includes(author) && !gh.addAssignees(parent, [author]).includes(author)) {
     gh.comment(run.number, `无法把 @${author} assign 到 #${parent}（不是协作者？）。`);
   }
-  const waiting = openRefs(gh.blockedBy(parent));
-  if (waiting.length) gh.comment(run.number, `提醒：#${parent} 还有未完成的依赖 ${waiting.join(' ')}。可以先做不受影响的部分。`);
+  if (kind.decisions.length) {
+    gh.comment(
+      run.number,
+      `#${parent} 依赖未拍板的决策 ${kind.decisions.map((d) => `#${d}`).join(' ')}，只能开 preflight，已打上 \`${PREFLIGHT_LABEL}\`。` +
+        `可以先开发、提 PR、请人 review，合并要等依赖关闭后按结论核对；依赖都关闭后 bot 会换成 \`${RUN_LABEL}\`。`,
+    );
+  } else if (preflight) {
+    gh.comment(
+      run.number,
+      `preflight：#${parent} 还在等 ${waiting.join(' ')}。可以先开发、提 PR、请人 review，合并要等依赖关闭后按结论核对；` +
+        `依赖都关闭后 bot 会把 \`${PREFLIGHT_LABEL}\` 换成 \`${RUN_LABEL}\`。`,
+    );
+  } else if (isPreflightBody(run.body)) {
+    gh.comment(run.number, `#${parent} 没有未完成的依赖，按普通运行打上 \`${RUN_LABEL}\`。`);
+  } else if (waiting.length) {
+    gh.comment(
+      run.number,
+      `提醒：#${parent} 还有未完成的依赖 ${waiting.join(' ')}。可以先做不受影响的部分；` +
+        `要在依赖未决时先做整块开发，关闭本 issue，改用 \`node scripts/cli.ts run ${parent} --preflight\`。`,
+    );
+  }
   return parent;
 }
 
@@ -210,19 +241,38 @@ function notifyDependents(gh: GitHub, blocker: Issue): number[] {
     const left = openRefs(gh.blockedBy(d.number)).filter((r) => r !== `#${blocker.number}`);
     const next = left.length ? `还在等 ${left.join(' ')}` : '依赖都已完成，可以开始';
     gh.comment(d.number, `依赖 #${blocker.number} 已关闭：**${blocker.title}**，总结见 #${blocker.number}。${next}。`);
+    if (!left.length) promotePreflights(gh, d.number);
   }
   return dependents.map((d) => d.number);
+}
+
+// Once the parent waits on nothing, its open preflight runs become ordinary runs.
+// Idempotent, so the scheduled resync repeats it to repair a promotion an event run missed.
+function promotePreflights(gh: GitHub, parent: number): void {
+  const preflights = gh.subIssues(parent).filter((i) => i.state === 'open' && names(i).includes(PREFLIGHT_LABEL));
+  if (!preflights.length || openRefs(gh.blockedBy(parent)).length) return;
+  for (const run of preflights) {
+    const current = names(run);
+    gh.setLabels(run.number, applyLabels(current.filter((l) => l !== PREFLIGHT_LABEL), [RUN_LABEL], []));
+    gh.comment(
+      run.number,
+      `@${run.user.login} #${parent} 的依赖都已关闭，本运行由 \`${PREFLIGHT_LABEL}\` 转为 \`${RUN_LABEL}\`。` +
+        '请对照依赖的结论核对 PR：有出入先改，改完重新打 `status:in-review` 请人复审。',
+    );
+  }
 }
 
 // Mirrors a non-run issue onto the board.
 function syncBoard(gh: GitHub, board: Board, item: Issue): void {
   if (item.pull_request || parentOf(item.body) !== null) return;
-  const openRuns = gh.subIssues(item.number).filter((i) => i.state === 'open' && parentOf(i.body) !== null).length;
-  board.sync(item.node_id, boardValues(item, openRuns, item.issue_dependencies_summary?.blocked_by ?? 0));
+  const runs = gh.subIssues(item.number).filter((i) => i.state === 'open' && parentOf(i.body) !== null);
+  const preflights = runs.filter((i) => names(i).includes(PREFLIGHT_LABEL)).length;
+  board.sync(item.node_id, boardValues(item, runs.length, item.issue_dependencies_summary?.blocked_by ?? 0, preflights));
 }
 
-// Scheduled and manual workflow runs resync every open issue, which also undoes edits
-// made on the board by hand and refills values cleared by a Status options change.
+// Scheduled and manual workflow runs resync every open issue: they promote preflights an
+// event run missed, undo edits made on the board by hand and refill values cleared by a
+// Status options change.
 const RESYNC_EVENTS = ['schedule', 'workflow_dispatch'];
 
 // Issues a PR body points at with "Refs/Fixes/Closes/Resolves #N" (or owner/repo#N for this repository).
@@ -257,7 +307,11 @@ function remindAuthors(gh: GitHub, payload: any): void {
 export function handle(event: Event, gh: GitHub, board?: Board): void {
   if (event.name === 'pull_request_target') return remindAuthors(gh, event.payload);
   if (RESYNC_EVENTS.includes(event.name)) {
-    if (board) for (const item of gh.listOpenIssues()) syncBoard(gh, board, item);
+    for (const item of gh.listOpenIssues()) {
+      if (item.pull_request || parentOf(item.body) !== null) continue;
+      promotePreflights(gh, item.number);
+      if (board) syncBoard(gh, board, gh.getIssue(item.number));
+    }
     return;
   }
   const touched = dispatch(event, gh);

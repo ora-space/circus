@@ -38,7 +38,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 /undepend #14
 ```
 
-`/label` 只接受登记表里的 label；`/unlabel` 可以移除任何 label（包括登记表之前留下的旧 label）。由 bot 管理的 label（`run`）两个命令都不能动。bot 全部执行成功时给评论点 👍，有任何一条被拒绝时回复原因，其余照常执行。
+`/label` 只接受登记表里的 label；`/unlabel` 可以移除任何 label（包括登记表之前留下的旧 label）。由 bot 管理的 label（`run`、`preflight`）两个命令都不能动。bot 全部执行成功时给评论点 👍，有任何一条被拒绝时回复原因，其余照常执行。
 
 ## 3. 权限
 
@@ -82,7 +82,18 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 4. 结束时按第 5 条关闭运行 issue；`## 总结` 就是汇报，必须自成一体。bot 把总结评论到 #N。
 5. 退出 #N 时 `/unassign` 自己。
 
-同一个 issue 可以同时有多个运行 issue，分别属于不同 agent，或者同一个 agent 的多次尝试。parent 必须是未关闭的普通 issue，不能是另一个运行 issue；不合法时 bot 在运行 issue 里提示，不打 label、不挂子 issue。parent 的 label 仍由 parent 的作者或 owner 决定，运行 issue 的作者只在自己的运行 issue 里汇报。
+同一个 issue 可以同时有多个运行 issue，分别属于不同 agent，或者同一个 agent 的多次尝试。
+
+### preflight：依赖未完成时先做
+
+parent 还在等未关闭的依赖，但要先开发、先提 PR 时，用 `node scripts/cli.ts run N --preflight` 开运行 issue，正文首行是 `Parent: #N (preflight)`。
+
+**决策阻塞开发。** 和某个 `type:decision` 相关的 issue 都必须依赖它（`依赖：#N` 或 `/depend #N`）。parent 依赖的决策还没关闭时只能开 preflight：`run` 不加 `--preflight` 会报错；绕过 CLI 开的普通运行，bot 也会打成 `preflight`。依赖的是普通 issue 时，普通运行和 preflight 都可以。
+
+- bot 打 `preflight`，不打 `run`，两者互斥；其余和普通运行 issue 一样（子 issue、assignee、review）。parent 没有未关闭的依赖时，bot 按普通运行打 `run`。
+- 可以开发、提 PR、请人 review；owner 的 `brief` 标出 parent 还在等哪些依赖，看板上 parent 显示为 Preflight 而不是 Blocked。合并仍由 owner 判断，一般等依赖关闭。
+- parent 的依赖全部关闭（或被 `/undepend` 移除）时，bot 在同一次处理里把 `preflight` 换成 `run`（漏掉的由每天的定时同步补上），提醒作者对照结论核对 PR：有出入先改，改完重新打 `status:in-review`。
+- 不要在 preflight 里替依赖做决定：它只是先把实现做出来，决策照样在依赖的 issue 里由 owner 拍板。parent 必须是未关闭的普通 issue，不能是另一个运行 issue，也不能是 `type:decision`（决策由 owner 在 issue 里拍板，不开运行）；不合法时 bot 在运行 issue 里提示，不打 label、不挂子 issue。parent 的 label 仍由 parent 的作者或 owner 决定，运行 issue 的作者只在自己的运行 issue 里汇报。
 
 ## 依赖和总事项
 
@@ -93,7 +104,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 | 依赖 | 本 issue 要等 #13 完成才能做完 | 打开时正文写一行 `依赖：#13 #14`；之后用 `/depend #13`、`/undepend #13` | GitHub 原生的 issue 依赖（Relationships 里的 blocked by） |
 | 总事项 | 本 issue 是 #11 的一部分 | 正文写一行 `总事项：#11`（也认"关联总事项 #11"这样的写法），随时可以编辑正文修改 | 只在正文里，`brief` 读它画树 |
 
-- **依赖**：网页上手动改依赖不会被撤销，以 GitHub 上的为准。被阻塞不打 label：有未关闭的依赖就是被阻塞，`brief` 在行尾标"等待 #13 #14"，看板显示 Blocked。依赖关闭（带总结）时，bot 在每个依赖它、还没关闭的 issue 下评论，说明剩下还在等谁，或者"依赖都已完成，可以开始"。在被阻塞的 issue 上开运行 issue 不会被拦，bot 会在运行 issue 里提醒还有哪些依赖没完成。
+- **依赖**：网页上手动改依赖不会被撤销，以 GitHub 上的为准。被阻塞不打 label：有未关闭的依赖就是被阻塞，`brief` 在行尾标"等待 #13 #14"，看板显示 Blocked。依赖关闭（带总结）时，bot 在每个依赖它、还没关闭的 issue 下评论，说明剩下还在等谁，或者"依赖都已完成，可以开始"。在被阻塞的 issue 上开运行 issue 不会被拦，bot 会在运行 issue 里提醒还有哪些依赖没完成；要在依赖未决时先做整块开发，开 preflight（见第 4 条）。
 - **总事项**：`brief` 把子事项挂在总事项下面，运行 issue 挂在它的 parent 下面，画成树；只在同一组里挂，所属的 issue 在别的组时，在行尾标出"总事项 #11"或"运行 → #11"。总事项不用 sub-issue 表达，sub-issue 只用来挂运行 issue。
 - **拆分**和这两者不同：一件事分给多人做，用 `/assign` 和运行 issue（第 4 条）。
 
@@ -180,11 +191,12 @@ circus/
 | `review:lgtm` | 别人审过运行 issue 的 PR，认为可以合并（见"review 运行 issue"）；作者重新打 `status:in-review` 或有人打 `status:needs-author` 时清除 | ✗ | ✓ |
 | `priority:p0`–`p3` | 优先级：立即、高、中、低；不设就是没有优先级 | ✓ | ✓ |
 | `repo:<name>` | 事项落在哪个 ora-space 仓库：desktop、specs、cluster、cloud、sandbox、marketplace；跨仓库可打多个 | ✓ | ✗ |
-| `run` | 运行 issue（正文首行 `Parent: #N`）。由 bot 管理：只在打开运行 issue 时由 bot 打上，命令不能增删 | ✗ | — |
+| `run` | 运行 issue（正文首行 `Parent: #N`）。由 bot 管理：只在打开运行 issue 时由 bot 打上，命令不能增删 | ✗ | 与 `preflight` 互斥 |
+| `preflight` | parent 依赖未完成时先做的运行 issue（正文首行 `Parent: #N (preflight)`）。由 bot 管理：打开时打上，parent 的依赖都关闭后换成 `run` | ✗ | 与 `run` 互斥 |
 
 互斥的 label 族（每个 issue 至多一个值）在设置新值时自动替换旧值。
 
-- **`type:decision` 有长期价值。** 决策 issue 关闭后，标题和 `## 总结` 写明结论和理由，以后要查"当初为什么这么定"，用 `gh issue list -R ora-space/circus --state closed --label type:decision --search "<关键词>"` 就能找到。所以凡是要 owner 拍板的，都开成 `type:decision`：正文列选项、依据、代价，同时打 `status:needs-owner`。
+- **`type:decision` 有长期价值。** 决策 issue 关闭后，标题和 `## 总结` 写明结论和理由，以后要查"当初为什么这么定"，用 `gh issue list -R ora-space/circus --state closed --label type:decision --search "<关键词>"` 就能找到。所以凡是要 owner 拍板的，都开成 `type:decision`：正文列选项、依据、代价，同时打 `status:needs-owner`。决策 issue 不开运行；要实现结论的 issue 依赖它，决策关闭前只能开 preflight（见"preflight"）。
 - **status 只表示"球在谁手里"。** 其余状态不用 label：在做 = 有未关闭的运行 issue，完成 = issue 已关闭。issue 关闭时 bot 移除它的 `status:*` 和 `review:*`。
   - 等 owner 的事，作者给自己的 issue 打 `status:needs-owner`（PR 待审打 `status:in-review`）；运行 issue 的作者改不了 parent，就打在自己的运行 issue 上。
   - owner 回复、拍板或提出要求后，打 `/label status:needs-author`（reviewer 在别人的运行 issue 上也可以，见"review 运行 issue"），它会替换掉 `needs-owner` 或 `in-review`，作者的 `brief` 会把这个 issue 放进"等我跟进"。只是顺手评论、不需要作者动作时，直接 `/unlabel status:needs-owner`。
@@ -201,7 +213,7 @@ circus/
 | `whoami` | 当前账号是 owner 还是成员，也就是和 agent 对话的人 |
 | `brief [--mine]` | 先说明身份，再列未关闭的 issue，分组，空组不显示：待关闭（我创建的，关联 PR 已合并、被 bot 重新打开过、或 parent 已关闭的运行 issue，最优先处理）；等我跟进（我创建的 `status:needs-author`）；等 owner 的（owner 看到所有人的 `status:needs-owner` 和 `status:in-review`，已 `review:lgtm` 的在前；成员只看到自己创建的 `status:needs-owner`）；需要 review（只有成员有：assign 给我的、`status:in-review` 的运行 issue）；其余我负责的；其他。每组画成树（总事项、运行 issue），按优先级排序，标出等待的依赖 |
 | `new --title T [--label L]... [--depend N]... [--epic N] [--body-file F]` | 新建 issue；`--label`、`--depend` 写进正文，由 bot 打上、设为依赖；`--epic` 写"总事项：#N" |
-| `run N [--title T] [--body-file F]` | 为 #N 开运行 issue |
+| `run N [--preflight] [--title T] [--body-file F]` | 为 #N 开运行 issue；`--preflight` 在 #N 依赖未完成时先做。#N 是 `type:decision` 时拒绝，#N 依赖未关闭的决策时必须加 `--preflight` |
 | `updates N [--all]` | 你上次发言之后的动静：别人的评论、斜杠命令、status 轨迹、引用的 PR、关闭和重新打开、有更新的运行 issue |
 | `show N` | 完整输出 issue 和全部评论 |
 | `label N [+]L... -L... [--sha C]` | 评论 `/label`、`/unlabel`；`--sha` 在评论里写明审过的 commit，打 `review:lgtm` 时要带 |
@@ -223,6 +235,7 @@ circus/
 | Done | issue 已关闭 |
 | Needs Owner / In Review / Needs Author | `status:needs-owner` / `status:in-review` / `status:needs-author` |
 | Blocked | 有未关闭的依赖 |
+| Preflight | 有未关闭的依赖，同时有 preflight 运行在做 |
 | Running | 有未关闭的运行 issue |
 | Open | 其余 |
 
@@ -234,14 +247,14 @@ Priority 字段来自 `priority:*`。owner 的 `brief` 已经列出所有人在�
 
 | 事件 | 处理 |
 |---|---|
-| issue 打开 | 打上正文里写的 label、设上 `依赖：` 行里的依赖，同步看板；运行 issue 另打 `run`、挂为 parent 的子 issue、作者不在 parent 的 assignee 里时补上，parent 还有未完成的依赖时提醒 |
-| 手动打上 label | 撤销并留言；打开后一分钟内、且正文里写了的 label 除外（`gh issue create --label` 产生的事件），运行 issue 上的 `run` 除外 |
+| issue 打开 | 打上正文里写的 label、设上 `依赖：` 行里的依赖，同步看板；运行 issue 另打 `run`（parent 依赖未关闭的决策，或有未完成的依赖且首行标了 `(preflight)` 时打 `preflight`；parent 是 `type:decision` 时只留言、不打 label 不挂子 issue）、挂为 parent 的子 issue、作者不在 parent 的 assignee 里时补上，parent 还有未完成的依赖时提醒 |
+| 手动打上 label | 撤销并留言；打开后一分钟内、且正文里写了的 label 除外（`gh issue create --label` 产生的事件），运行 issue 上与首行相符的 `run` 或 `preflight` 除外 |
 | 手动移除 label | 恢复并留言 |
 | 手动 assign / unassign | 撤销并留言 |
-| issue 关闭 | 正文不以 `## 总结` 开头，或不是作者关闭、总结第一行又没写代关理由，就重新打开并留言；有总结时移除 `status:*` 和 `review:*`、同步看板为 Done，通知依赖它的 issue 并重新同步它们；运行 issue 把总结评论到 parent，并重新同步 parent |
+| issue 关闭 | 正文不以 `## 总结` 开头，或不是作者关闭、总结第一行又没写代关理由，就重新打开并留言；有总结时移除 `status:*` 和 `review:*`、同步看板为 Done，通知依赖它的 issue 并重新同步它们，依赖都已关闭的 issue 下的 `preflight` 换成 `run`；运行 issue 把总结评论到 parent，并重新同步 parent |
 | issue 重新打开 | 同步看板，连同依赖它的 issue（运行 issue 同步它的 parent） |
 | circus 的 PR 合并 | 在 PR 描述里 `Refs` / `Fixes` 等指向的未关闭 issue 下 @ 作者，提醒总结后关闭（`pull_request_target`，只运行 main 上的代码） |
-| 每天定时 / 在 Actions 页面手动触发 | 全量同步所有未关闭的 issue 到看板 |
+| 每天定时 / 在 Actions 页面手动触发 | 遍历所有未关闭的 issue：依赖都已关闭的，把其下未关闭的 `preflight` 换成 `run`（补上事件处理时漏掉的）；再全量同步到看板 |
 | 新评论 | 执行其中的斜杠命令（见权限表和"review 运行 issue"），同步看板；发出者不是作者时查一次仓库权限 |
 
 ## 开发

@@ -42,7 +42,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 
 `brief` 也会在你负责的 issue 行尾标出"N 条新回复"，不用等别人提醒。
 
-**决策**是最需要留痕的输入：待决的开成 `type:decision` 并打 `status:needs-owner`，正文列选项、依据、代价，请 owner 拍板。owner 拍板时在 issue 里写下结论，并 `/label status:needs-author` 提醒作者跟进；作者按结论处理完，按 [关闭前先总结](scripts/README.md#5-关闭前先总结) 关闭。结论长期有效时，再开记忆 PR；属于 Ora 产品架构的，提议在 [ora-space/specs](https://github.com/ora-space/specs) 写 ADR。
+**决策**是最需要留痕的输入：待决的开成 `type:decision` 并打 `status:needs-owner`，正文列选项、依据、代价，请 owner 拍板。决策 issue 不开运行；相关的 issue 都依赖它，决策关闭前只能开 [preflight](scripts/README.md#preflight依赖未完成时先做)。owner 拍板时在 issue 里写下结论，并 `/label status:needs-author` 提醒作者跟进；作者按结论处理完，按 [关闭前先总结](scripts/README.md#5-关闭前先总结) 关闭。结论长期有效时，再开记忆 PR；属于 Ora 产品架构的，提议在 [ora-space/specs](https://github.com/ora-space/specs) 写 ADR。
 
 ## 写入边界
 
@@ -50,6 +50,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 - issue 的标题、正文、评论和总结一律用中文；代码、命令、label、路径、报错原文和专有名词保留原样。
 - 只有作者关闭自己的 issue，owner 也不例外：别人的 issue 做完了，在里面提醒作者总结后关闭。确需代关（作者离开、事项作废）时用 `close --for-author "<理由>"`，否则 bot 会重新打开。
 - 运行 issue 有 `review:lgtm` 时，owner 可以据此减少审查；合并仍由 owner 决定。
+- `preflight` 运行 issue 是 parent 依赖未完成时先做的开发（见 [preflight](scripts/README.md#preflight依赖未完成时先做)）：它的 PR 一般等依赖关闭、bot 转为 `run`、作者按结论核对后再合并。
 - owner 合并 PR 前，先看改动文件列表（`gh pr view N -R <repo> --json files`）：每个文件都是[交付物](scripts/README.md#开发产品仓库)才合并，混入计划、进度、实现日志这类过程记录时请作者移除。合并时只合并 PR，不顺手关闭关联的 issue。circus 的 PR 合并后，bot 会在 `Refs` 的 issue 里提醒作者；产品仓库的 PR 合并后，在关联的运行 issue 里评论提醒作者。
 - label 和 assignee 只通过 bot 修改：打开 issue 时写在正文里，之后用评论里的斜杠命令。权限见 [`scripts/README.md`](scripts/README.md#3-权限)。
 - 记忆和协议只能经 PR 改，PR 开在 `ora-space/circus`（从 fork 提时 `gh pr create -R ora-space/circus --head <login>:<branch>`），合并由 owner 决定。

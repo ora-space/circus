@@ -41,7 +41,10 @@ function fakeGitHub(issue: Partial<Issue> = {}, assignable = ['alice', 'bob', 'c
   };
   const push = (n: number, entry: string) => log.push(n === 1 ? entry : `#${n} ${entry}`);
   const gh: GitHub = {
-    getIssue: (n) => structuredClone(at(n)),
+    getIssue: (n) => {
+      if (blockers.has(n)) summarize(n);
+      return structuredClone(at(n));
+    },
     setLabels: (n, labels) => {
       push(n, `labels ${labels.join(' ')}`);
       at(n).labels = labels.map((name) => ({ name }));
@@ -414,6 +417,28 @@ test('scheduled and manual runs resync every open non-run issue', () => {
   assert.deepEqual(f.log, []);
 });
 
+test('scheduled resync promotes preflights an event run missed, with or without a board', () => {
+  for (const b of [fakeBoard(), undefined]) {
+    const f = fakeGitHub();
+    f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1 (preflight)', labels: [{ name: 'preflight' }] });
+    f.add({ number: 3, state: 'closed' });
+    f.gh.addBlockedBy(1, 1003);
+    f.add({ number: 4 });
+    f.add({ number: 5, user: { login: 'bob' }, body: 'Parent: #4 (preflight)', labels: [{ name: 'preflight' }] });
+    f.add({ number: 6 });
+    f.gh.addBlockedBy(4, 1006);
+    f.log.length = 0;
+    handle({ name: 'schedule', payload: {} }, f.gh, b?.board);
+    assert.equal(f.log[0], '#2 labels run');
+    assert.match(f.log[1], /^#2 comment @bob #1 的依赖都已关闭/);
+    assert.equal(f.log.length, 2);
+    if (b) assert.deepEqual(b.synced, ['I_1 Running', 'I_4 Preflight', 'I_6 Open']);
+    f.log.length = 0;
+    handle({ name: 'schedule', payload: {} }, f.gh, b?.board);
+    assert.deepEqual(f.log, []);
+  }
+});
+
 // Dependencies: #1 is the issue under test, #2 and #3 are blockers.
 test('opened: 依赖 lines become dependencies; bad references are reported', () => {
   const f = fakeGitHub({ body: '依赖：#2 #3 #1 #99' });
@@ -473,7 +498,90 @@ test('a run on a blocked issue gets a reminder', () => {
   f.gh.addBlockedBy(1, 1003);
   f.log.length = 0;
   opened(f, f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1' }));
-  assert.equal(f.log.at(-1), '#2 comment 提醒：#1 还有未完成的依赖 #3。可以先做不受影响的部分。');
+  assert.match(f.log.at(-1)!, /^#2 comment 提醒：#1 还有未完成的依赖 #3。可以先做不受影响的部分；.*run 1 --preflight/);
+});
+
+// Preflight: #1 is the parent, #3 its blocker, #2 the preflight run.
+function blockedParent() {
+  const f = fakeGitHub({ assignees: [{ login: 'bob' }] });
+  f.add({ number: 3, title: '定方案' });
+  f.gh.addBlockedBy(1, 1003);
+  f.log.length = 0;
+  return f;
+}
+
+test('a preflight on a blocked issue is labelled preflight, not run', () => {
+  const f = blockedParent();
+  const b = fakeBoard();
+  const run = f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1 (preflight)' });
+  handle({ name: 'issues', payload: { action: 'opened', issue: run, sender: user('bob') } }, f.gh, b.board);
+  assert.equal(f.log[0], '#2 labels preflight');
+  assert.match(f.log.at(-1)!, /^#2 comment preflight：#1 还在等 #3。/);
+  assert.deepEqual(b.synced, ['I_1 Preflight']);
+});
+
+test('a preflight on an issue with nothing open to wait on is an ordinary run', () => {
+  const f = fakeGitHub({ assignees: [{ login: 'bob' }] });
+  opened(f, f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1 (preflight)' }));
+  assert.deepEqual(f.log, ['#2 labels run', 'sub-issue 1002', '#2 comment #1 没有未完成的依赖，按普通运行打上 `run`。']);
+});
+
+test('closing the last blocker turns open preflights into runs', () => {
+  const f = blockedParent();
+  f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1 (preflight)', labels: [{ name: 'preflight' }, { name: 'status:in-review' }] });
+  f.add({ number: 4, user: { login: 'bob' }, body: 'Parent: #1 (preflight)', labels: [{ name: 'preflight' }], state: 'closed' });
+  const b = fakeBoard();
+  const blocker = f.add({ number: 3, title: '定方案', state: 'closed', body: '## 总结\n\n选 A' });
+  handle({ name: 'issues', payload: { action: 'closed', issue: blocker, sender: user('alice') } }, f.gh, b.board);
+  assert.equal(f.log[1], '#2 labels status:in-review run');
+  assert.match(f.log[2], /^#2 comment @bob #1 的依赖都已关闭，本运行由 `preflight` 转为 `run`。/);
+  assert.equal(f.log.length, 3);
+  assert.deepEqual(b.synced, ['I_3 Done', 'I_1 Running']);
+});
+
+test('/undepend of the last blocker turns preflights into runs; a remaining one keeps them', () => {
+  const f = blockedParent();
+  f.add({ number: 5 });
+  f.gh.addBlockedBy(1, 1005);
+  f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1 (preflight)', labels: [{ name: 'preflight' }] });
+  f.log.length = 0;
+  commentEvent(f, 'alice', '/undepend #3');
+  assert.deepEqual(f.log, ['undepend 3', 'react 42 +1']);
+  f.log.length = 0;
+  commentEvent(f, 'alice', '/undepend #5');
+  assert.deepEqual(f.log.slice(0, 2), ['undepend 5', '#2 labels run']);
+});
+
+test('a decision has no runs, preflight or not', () => {
+  for (const body of ['Parent: #1', 'Parent: #1 (preflight)']) {
+    const f = fakeGitHub({ labels: [{ name: 'type:decision' }] });
+    opened(f, f.add({ number: 2, user: { login: 'bob' }, body }));
+    assert.equal(f.log.length, 1);
+    assert.match(f.log[0], /^#2 comment #1 是 type:decision，不能开运行 issue.*请关闭本 issue。$/);
+  }
+});
+
+test('a plain run of an issue waiting on an open decision becomes a preflight', () => {
+  const f = fakeGitHub({ assignees: [{ login: 'bob' }] });
+  f.add({ number: 3, labels: [{ name: 'type:decision' }] });
+  f.gh.addBlockedBy(1, 1003);
+  f.log.length = 0;
+  opened(f, f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1' }));
+  assert.equal(f.log[0], '#2 labels preflight');
+  assert.match(f.log.at(-1)!, /^#2 comment #1 依赖未拍板的决策 #3，只能开 preflight，已打上 `preflight`。/);
+});
+
+test('preflight is kept on preflights, reverted elsewhere, and refused by commands', () => {
+  const f = fakeGitHub();
+  const run = f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1 (preflight)', labels: [{ name: 'preflight' }], updated_at: '2026-10-05T00:00:00Z' });
+  handle({ name: 'issues', payload: { action: 'labeled', issue: run, sender: user('bob'), label: { name: 'preflight' } } }, f.gh);
+  assert.deepEqual(f.log, []);
+  const plain = f.add({ number: 3, user: { login: 'bob' }, body: 'Parent: #1', labels: [{ name: 'run' }, { name: 'preflight' }], updated_at: '2026-10-05T00:00:00Z' });
+  handle({ name: 'issues', payload: { action: 'labeled', issue: plain, sender: user('bob'), label: { name: 'preflight' } } }, f.gh);
+  assert.equal(f.log[0], '#3 labels run');
+  f.log.length = 0;
+  commentEvent(f, 'alice', '/label preflight');
+  assert.match(f.log[0], /preflight 由 bot 管理/);
 });
 
 test('closing someone else\'s issue is undone unless the summary records why', () => {

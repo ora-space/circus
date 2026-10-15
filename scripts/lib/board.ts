@@ -1,11 +1,13 @@
 // The board: an org Project that mirrors issues read-only, maintained by the bot alone.
 // Runs are not on it; an issue with open runs shows as Running unless a status label says
-// otherwise, and one with open dependencies as Blocked. The bot also keeps the Status options and the Priority field in shape.
+// otherwise, and one with open dependencies as Blocked, or Preflight when a preflight run is
+// already working on it. The bot also keeps the Status options and the Priority field in shape.
 import { graphql, type Gh } from './gh.ts';
 
 export const STATUS_OPTIONS = [
   { name: 'Open', color: 'GRAY', description: '未关闭，没有运行在做' },
   { name: 'Blocked', color: 'ORANGE', description: '有未完成的依赖' },
+  { name: 'Preflight', color: 'PINK', description: '有未完成的依赖，preflight 运行在先做' },
   { name: 'Running', color: 'YELLOW', description: '有运行 issue 在做' },
   { name: 'Needs Owner', color: 'RED', description: '等 owner 回复、决策或授权' },
   { name: 'In Review', color: 'PURPLE', description: 'PR 待 owner 审' },
@@ -22,11 +24,17 @@ const STATUS_BY_LABEL: Record<string, string> = {
 
 export type BoardValues = { Status: string; Priority?: string };
 
-// Done > status label > Blocked (open dependencies) > Running (open runs) > Open.
-export function boardValues(issue: { state: string; labels: { name: string }[] }, openRuns: number, openBlockers = 0): BoardValues {
+// Done > status label > Preflight (open dependencies, open preflight runs) > Blocked (open
+// dependencies) > Running (open runs) > Open.
+export function boardValues(
+  issue: { state: string; labels: { name: string }[] },
+  openRuns: number,
+  openBlockers = 0,
+  openPreflights = 0,
+): BoardValues {
   const names = issue.labels.map((l) => l.name);
   const labelled = names.map((l) => STATUS_BY_LABEL[l]).find(Boolean);
-  const derived = openBlockers > 0 ? 'Blocked' : openRuns > 0 ? 'Running' : 'Open';
+  const derived = openBlockers > 0 ? (openPreflights > 0 ? 'Preflight' : 'Blocked') : openRuns > 0 ? 'Running' : 'Open';
   const status = issue.state === 'closed' ? 'Done' : (labelled ?? derived);
   const priority = names.find((l) => l.startsWith('priority:'))?.slice('priority:'.length).toUpperCase();
   return priority ? { Status: status, Priority: priority } : { Status: status };
