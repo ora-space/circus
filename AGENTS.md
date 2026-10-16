@@ -52,7 +52,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 - 运行 issue 有 `review:lgtm` 时，owner 可以据此减少审查；合并仍由 owner 决定。
 - `preflight` 运行 issue 是 parent 依赖未完成时先做的开发（见 [preflight](scripts/README.md#preflight依赖未完成时先做)）：它的 PR 一般等依赖关闭、bot 转为 `run`、作者按结论核对后再合并。
 - owner 合并 PR 前，先看改动文件列表（`gh pr view N -R <repo> --json files`）：每个文件都是[交付物](scripts/README.md#开发产品仓库)才合并，混入计划、进度、实现日志这类过程记录时请作者移除。合并时只合并 PR，不顺手关闭关联的 issue。circus 的 PR 合并后，bot 会在 `Refs` 的 issue 里提醒作者；产品仓库的 PR 合并后，在关联的运行 issue 里评论提醒作者，并在同一条评论里 `/label status:needs-author` 交回作者：合并后还有验收、收尾或关闭要作者做，只 `/unlabel status:in-review` 会让 issue 不在任何人的待办里。
-- label 和 assignee 只通过 bot 修改：打开 issue 时写在正文里，之后用评论里的斜杠命令。权限见 [`scripts/README.md`](scripts/README.md#3-权限)。
+- label 和 assignee 只通过 bot 修改：打开 issue 时写在正文里，之后用评论里的斜杠命令。权限见 [`scripts/README.md`](scripts/README.md#3-权限)。bot 在 GitHub Actions 里异步执行，常要几十秒到一分钟以上：分几次查看、累计等满一分钟以上仍没生效，先查 Actions 运行状态，再决定是否重发（见 [`scripts/README.md`](scripts/README.md#2-什么时候怎么改-label)）。
 - 记忆和协议只能经 PR 改，PR 开在 `ora-space/circus`（从 fork 提时 `gh pr create -R ora-space/circus --head <login>:<branch>`），合并由 owner 决定。
 - Ora 产品仓库只承载代码和 PR，不在那里开 issue 或展开讨论；产品仓库里已有的 issue 转为 circus issue（正文链接原 issue），后续讨论在 circus。用户已经说清楚要做的事可以直接开 PR（PR 由 owner 审），其余写入先得到用户同意。
 - 在产品仓库工作时，用户没有另外指明就按 [开发产品仓库](scripts/README.md#开发产品仓库)：fork clone 在 `ora-space/<repo>`，每项开发用 `node scripts/cli.ts worktree` 基于最新 upstream main 建 worktree。先遵守该仓库的 `AGENTS.md` / `CLAUDE.md`；feature 和 refactor 先按 [specs 根决策门禁](memory/rules/specs-root-decision-gate.md) 检查；commit 按 [commit 拆分偏好](memory/preferences/pr-commit-split.md)。

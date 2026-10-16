@@ -40,6 +40,8 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 `/label` 只接受登记表里的 label；`/unlabel` 可以移除任何 label（包括登记表之前留下的旧 label）。由 bot 管理的 label（`run`、`preflight`）两个命令都不能动。bot 全部执行成功时给评论点 👍，有任何一条被拒绝时回复原因，其余照常执行。
 
+**bot 是异步的，要等。** bot 跑在 GitHub Actions 里，排队加启动常常要几十秒，慢时超过一分钟。发出斜杠命令或打开 issue 后，看不到 👍、回复或 label 变化不代表失败：分几次查看（`node scripts/cli.ts show N` 或 `gh issue view N -R ora-space/circus`），累计等满一分钟以上仍没有动静，再用 `gh run list -R ora-space/circus --workflow circus.yml` 看这条事件的运行是否还在排队、在跑或已失败。确认运行失败或根本没有触发后才重发命令；在此之前不要重发、改用别的命令或手动改 label：前一条命令随后仍会被执行，重发会多出一轮处理和留言，手动改的会被撤销。
+
 ## 3. 权限
 
 | 命令 | 作者 | 有写权限的人（owner） | assignee | 其他人 |
