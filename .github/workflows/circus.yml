@@ -36,6 +36,9 @@ concurrency:
 
 jobs:
   bot:
+    # The bot's own writes (as the App) trigger this workflow again; skip them before a runner
+    # starts instead of letting the bot ignore them.
+    if: github.event.sender.type != 'Bot'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
