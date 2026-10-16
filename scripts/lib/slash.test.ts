@@ -16,6 +16,12 @@ test('parseSlash skips fenced code', () => {
   assert.deepEqual(parseSlash(null), []);
 });
 
+test('parseSlash skips commands that render as code or stay hidden', () => {
+  for (const body of ['`/unlabel review:lgtm`', 'x\n\n    /unlabel review:lgtm', '<!--\n/unlabel review:lgtm\n-->', '````\n```\n/unlabel review:lgtm\n````']) {
+    assert.deepEqual(parseSlash(body), [], body);
+  }
+});
+
 test('fromSigned splits +/- arguments and formatSlash writes them back', () => {
   const cmds = fromSigned(['+repo:desktop', '-repo:specs', 'repo:cloud'], 'label', 'unlabel');
   assert.deepEqual(cmds, [

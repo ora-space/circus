@@ -1,5 +1,6 @@
 // The label registry. A label is `<prefix>:<value>`; only registered labels can be set
 // through the bot.
+import { prose } from './markdown.ts';
 
 export interface LabelFamily {
   prefix: string;
@@ -96,15 +97,10 @@ export function allLabels(families = FAMILIES): { name: string; description: str
   ];
 }
 
-// Text outside fenced code blocks, so examples in code do not set labels.
-function prose(body: string): string {
-  return body.replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, '');
-}
-
-// Registered labels of body-settable families written literally in the body,
+// Registered labels of body-settable families written in the body's prose,
 // in order of appearance; an exclusive family keeps its first match.
 export function labelsFromBody(body: string | null | undefined, families = FAMILIES): string[] {
-  const text = prose(body ?? '');
+  const text = prose(body);
   const found: string[] = [];
   for (const m of text.matchAll(/(?<![\w:/.-])([a-z][\w-]*):([\w.-]+)/g)) {
     const label = `${m[1]}:${m[2]}`;

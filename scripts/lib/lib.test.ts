@@ -27,6 +27,7 @@ test('labelsFromBody ignores fenced code, non-body families and extra exclusive 
   const body = '```\nrepo:desktop\n```\npriority:p1 priority:p0 status:ready';
   assert.deepEqual(labelsFromBody(body, families), ['priority:p1']);
   assert.deepEqual(labelsFromBody(null, families), []);
+  assert.deepEqual(labelsFromBody('e.g. `repo:desktop`\n  ```\nrepo:specs\n  ```\n<!-- priority:p0 -->', families), []);
 });
 
 test('applyLabels replaces exclusive values and keeps unregistered labels', () => {
@@ -64,6 +65,7 @@ test('parentOf reads the first line of the original body, even after a summary',
 
 test('dependsFromBody reads 依赖 lines of the original body', () => {
   assert.deepEqual(dependsFromBody('## 背景\n依赖：#13 #14、#13\n依赖: #15\n提到 #16'), [13, 14, 15]);
+  assert.deepEqual(dependsFromBody('```\n依赖：#13\n```\n<!-- 依赖：#14 -->'), []);
   assert.deepEqual(dependsFromBody(withSummary('依赖：#2', 'done')), [2]);
   assert.deepEqual(dependsFromBody('完整通过依赖 #13'), []);
   assert.equal(dependLine([13, 14]), '依赖：#13 #14');
