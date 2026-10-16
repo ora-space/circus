@@ -57,7 +57,7 @@ jobs:
           CIRCUS_OWNER_RECIPIENTS: ${{ vars.CIRCUS_OWNER_RECIPIENTS }}
           FEISHU_APP_ID: ${{ vars.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
-          FEISHU_RECIPIENTS_JSON: ${{ vars.FEISHU_RECIPIENTS_JSON }}
+          FEISHU_RECIPIENTS_JSON: ${{ secrets.FEISHU_RECIPIENTS_JSON }}
       - name: Verify direct Feishu delivery
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.notification_test }}
         run: node scripts/notify/direct-smoke.ts
@@ -66,4 +66,4 @@ jobs:
           CIRCUS_NOTIFICATIONS_ENABLED: ${{ vars.CIRCUS_NOTIFICATIONS_ENABLED }}
           FEISHU_APP_ID: ${{ vars.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
-          FEISHU_RECIPIENTS_JSON: ${{ vars.FEISHU_RECIPIENTS_JSON }}
+          FEISHU_RECIPIENTS_JSON: ${{ secrets.FEISHU_RECIPIENTS_JSON }}

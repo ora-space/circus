@@ -89,7 +89,7 @@ https://github.com/ora-space/circus/issues/95#issuecomment-...
 |---|---|---|
 | `FEISHU_APP_ID` | Variables | 飞书 App ID 原文，不包 JSON、不加引号 |
 | `FEISHU_APP_SECRET` | Secrets | 飞书 App Secret 原文，不包 JSON、不加引号 |
-| `FEISHU_RECIPIENTS_JSON` | Variables | 上述 GitHub login → mobile/open_id 映射的完整 JSON 对象 |
+| `FEISHU_RECIPIENTS_JSON` | Secrets | 上述 GitHub login → mobile/open_id 映射的完整 JSON 对象。含手机号，必须存为 Secret：Variable 会在 Actions 日志里明文打印 |
 | `CIRCUS_OWNER_RECIPIENTS` | Variables | 接收 owner 通知的 GitHub login，逗号或空格分隔，如 `EricWvi`；设置后覆盖 JSON 的 `ownerRecipients` |
 
 这些值与 GitHub App 的 `CIRCUS_APP_ID`、`CIRCUS_APP_PRIVATE_KEY` 不同；不保存 tenant_access_token。设置入口为 upstream 仓库 Settings → Secrets and variables → Actions。
