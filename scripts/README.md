@@ -59,7 +59,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 运行 issue 的 assignee 就是 reviewer：需要谁帮忙 review，就在运行 issue 里 `/assign` 对方（作者和 owner 都可以）。作者开完 PR 后给运行 issue 打 `status:in-review`，从这时起 reviewer 的 `brief` 在"需要 review"一组里列出它，reviewer 也才能打下面两个 label。只有 reviewer 和 owner 能打，其他成员只能评论。review 完、不再跟进时，reviewer `/unassign` 自己。review 的步骤：
 
-1. 在产品仓库的 PR 上留 GitHub 原生 review：没问题就 Approve，有问题就 Request changes，具体意见写在 PR 上。成员没有写权限也能提交 review，只是不计入合并条件。
+1. 在产品仓库的 PR 上留 GitHub 原生 review：没问题就 Approve，有问题就 Request changes，具体意见写在 PR 上。成员没有写权限也能提交 review，只是不计入合并条件。review 时同时核对 PR 描述里的 [ADR 状态](#开发产品仓库)：没写，或者本 PR 补齐了实现却没有把 ADR 改为 `implemented` 的 specs PR，都按有问题处理。
 2. 在 circus 的运行 issue 上留结论，由 bot 校验后执行：
    - 没问题：`node scripts/cli.ts label N +review:lgtm --sha <审过的 commit>`。评论里必须写明 commit SHA，否则 bot 拒绝。
    - 有问题：`node scripts/cli.ts label N +status:needs-author`，再评论一条简述问题，或者链到 PR 上的 review。它替换掉 `status:in-review`，球回到作者手里，issue 离开 owner 的待审队列。
@@ -116,6 +116,26 @@ parent 还在等未关闭的依赖，但要先开发、先提 PR 时，用 `node
 - **依赖**：网页上手动改依赖不会被撤销，以 GitHub 上的为准。被阻塞不打 label：有未关闭的依赖就是被阻塞，`brief` 在行尾标"等待 #13 #14"，看板显示 Blocked。依赖关闭（带总结）时，bot 在每个依赖它、还没关闭的 issue 下评论，说明剩下还在等谁，或者"依赖都已完成，可以开始"。在被阻塞的 issue 上开运行 issue 不会被拦，bot 会在运行 issue 里提醒还有哪些依赖没完成；要在依赖未决时先做整块开发，开 preflight（见第 4 条）。
 - **总事项**：`brief` 把子事项挂在总事项下面，运行 issue 挂在它的 parent 下面，画成树；只在同一组里挂，所属的 issue 在别的组时，在行尾标出"总事项 #11"或"运行 → #11"。总事项不用 sub-issue 表达，sub-issue 只用来挂运行 issue。
 - **拆分**和这两者不同：一件事分给多人做，用 `/assign` 和运行 issue（第 4 条）。
+
+## 决策的生命周期
+
+决策 issue 只负责把决定做出来、记下来。落地（ADR、记忆 PR、实现）都由依赖它的 task 承接，决策 issue 不等它们完成。
+
+1. **提出**：作者开 `type:decision`，打 `status:needs-owner`，正文列选项、依据、代价。讨论和调研都评论在决策 issue 里。
+2. **拍板**：owner 在 issue 里写下结论，`/label status:needs-author` 交回作者。owner 需要先看 ADR 草稿再拍板时，草稿由依赖本决策的 ADR task 在 preflight 里起草（见下表）。
+3. **关闭**：结论写下后，作者按第 5 条写总结并关闭，不等 ADR 合并，也不等实现完成。总结写明结论、理由、被否定的方案，以及承接落地的 issue 编号；需要承接、但还没有对应 issue 的，关闭前先开好，让它依赖本决策。
+4. **转入落地**：决策关闭后，bot 在依赖它的 issue 下提醒，并把依赖都已关闭的 parent 下的 `preflight` 运行换成 `run`。各运行的作者对照结论核对已有的草稿和 PR，有出入先改，再重新打 `status:in-review`。
+
+承接的 issue 都依赖决策（`依赖：#N` 或 `/depend #N`），决策关闭前它们的运行都是 preflight，关闭后转为 run：
+
+| 承接方 | 决策关闭前（preflight） | 决策关闭后（run） |
+|---|---|---|
+| ADR task（`repo:specs`），落地属于 Ora 产品架构的结论 | 起草 ADR，开 specs PR 供 owner 拍板参考；PR 不合并 | 按结论修改 ADR，标为 `approved`，review 后由 owner 合并 |
+| 实现 task | 先开发、提 PR、请人 review；PR 一般不合并 | 对照结论（和已合并的 ADR）核对 PR，review 后由 owner 合并 |
+
+- 实现要以 ADR 为准时，实现 task 同时 `/depend` ADR task，ADR 合并、ADR task 关闭后实现的运行才转为 run。
+- 不要反过来让决策依赖 ADR task 或实现 task，也不要等 ADR 合并再关闭决策：ADR task 依赖决策，决策又等 ADR 合并，两边会互相卡住。
+- 结论长期成立、属于协作方式的，开记忆 PR，链接写进决策的总结。
 
 ## 5. 关闭前先总结
 
@@ -176,14 +196,23 @@ circus/
 
 **PR 只装交付物**：代码、测试、迁移，以及仓库约定长期维护的文档（specs 的 ADR、核心用例、领域词汇；各仓库 `docs/` 下的正式说明）。开发过程中的计划、进度、实现日志、调研笔记和验收流水账属于过程记录，写在运行 issue 里；它们一旦合入 main 就会和实现脱节，又被后来的人和 agent 当成依据。跨会话、跨人接力需要的笔记同样写在运行 issue 里，功能分支上也只提交交付物；这一条优先于产品仓库自己的约定（例如 cloud `plans/README.md` 允许在功能分支提交过程笔记）。
 
+**ADR 状态跟着实现走**：specs 的 ADR 按 `proposed` → `approved` → `implemented` 推进（规则见 specs 的 `AGENTS.md`）。实现合并了 ADR 还停在 `approved`，后来的人和 agent 就分不清它是已经兑现的系统承诺，还是还没做的计划。所以产品仓库的 PR 描述要写明它和 ADR 的关系：
+
+- 列出本 PR 实现的 ADR（specs 里的路径），逐份写明本 PR 合并后是否已全部实现。
+- 全部实现的：同时在 specs 开 PR，把 ADR 改为 `implemented`，按最终实现同步正文（偏离 approved 决策的先在正文写明实际采用的决策和原因），`Refs` 同一个运行 issue，链接写进产品 PR 描述和运行 issue。一份 ADR 由多个 PR 或多个仓库实现时，由补齐最后一块的 PR 带上这份 specs PR。
+- 只实现了一部分的：写明 ADR 仍为 `approved`、还差哪些、由哪个 issue 承接。
+- 依据的 ADR 还是 `proposed`：决策没定，PR 先不合并，等 ADR 改为 `approved`。
+- 不涉及 ADR 的，写一句"不涉及 ADR"，让 reviewer 和 owner 知道已经查过。
+
 **步骤**：
 
 1. 开运行 issue：`node scripts/cli.ts run N`。
 2. 建 worktree：`node scripts/cli.ts worktree <repo> <branch>`。`ora-space/<repo>` 不存在时先 fork 并 clone；然后拉取 upstream 最新的 main，顺手把 fork 的 main 推到最新，再基于 `upstream/main` 建分支和 worktree。
 3. 在 worktree 里开发、commit，阶段性成果及时 push 到 fork：`git push -u origin <branch>`。
 4. 核对改动文件：`git diff --name-only upstream/main...HEAD` 列出的每个文件都是交付物；过程记录移到运行 issue 后从分支删除。
-5. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<运行 issue>`，PR 链接评论到运行 issue。
-6. PR 合并或关闭后，关闭运行 issue 时 `close` 会自动清理对应的 worktree 和本地分支（规则见"关闭前先总结"）；也可以单独运行 `node scripts/cli.ts cleanup <运行 issue>`。不要手动 `branch -D`，除非确认分支上没有没推上去的工作。
+5. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<运行 issue>` 和 ADR 状态（见上文"ADR 状态跟着实现走"），需要时同时开把 ADR 改为 `implemented` 的 specs PR，PR 链接都评论到运行 issue。
+6. 关闭运行 issue 前，确认 ADR 已经是该有的状态：要转 `implemented` 的 specs PR 已合并，没转的在总结里写明由哪个 issue 承接。
+7. PR 合并或关闭后，关闭运行 issue 时 `close` 会自动清理对应的 worktree 和本地分支（规则见"关闭前先总结"）；也可以单独运行 `node scripts/cli.ts cleanup <运行 issue>`。不要手动 `branch -D`，除非确认分支上没有没推上去的工作。
 
 不在 `ora-space/<repo>` 的主目录里开发：它只停在 main，作为 worktree 的母库。
 
@@ -205,7 +234,7 @@ circus/
 
 互斥的 label 族（每个 issue 至多一个值）在设置新值时自动替换旧值。
 
-- **`type:decision` 有长期价值。** 决策 issue 关闭后，标题和 `## 总结` 写明结论和理由，以后要查"当初为什么这么定"，用 `gh issue list -R ora-space/circus --state closed --label type:decision --search "<关键词>"` 就能找到。所以凡是要 owner 拍板的，都开成 `type:decision`：正文列选项、依据、代价，同时打 `status:needs-owner`。决策 issue 不开运行；要实现结论的 issue 依赖它，决策关闭前只能开 preflight（见"preflight"）。
+- **`type:decision` 有长期价值。** 决策 issue 关闭后，标题和 `## 总结` 写明结论和理由，以后要查"当初为什么这么定"，用 `gh issue list -R ora-space/circus --state closed --label type:decision --search "<关键词>"` 就能找到。所以凡是要 owner 拍板的，都开成 `type:decision`：正文列选项、依据、代价，同时打 `status:needs-owner`。决策 issue 不开运行；owner 写下结论后作者就关闭，ADR 和实现由依赖它的 issue 承接，这些 issue 在决策关闭前只能开 preflight（见"决策的生命周期"）。
 - **status 只表示"球在谁手里"。** 其余状态不用 label：在做 = 有未关闭的运行 issue，完成 = issue 已关闭。issue 关闭时 bot 移除它的 `status:*` 和 `review:*`。
   - 等 owner 的事，作者给自己的 issue 打 `status:needs-owner`（PR 待审打 `status:in-review`）；运行 issue 的作者改不了 parent，就打在自己的运行 issue 上。
   - owner 回复、拍板或提出要求后，打 `/label status:needs-author`（reviewer 在别人的运行 issue 上也可以，见"review 运行 issue"），它会替换掉 `needs-owner` 或 `in-review`，作者的 `brief` 会把这个 issue 放进"等我跟进"。只是顺手评论、不需要作者动作时，直接 `/unlabel status:needs-owner`。
