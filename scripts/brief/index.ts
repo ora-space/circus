@@ -179,8 +179,10 @@ interface Node {
   };
 }
 
+// Each issue carries its last 20 comments in full, so a page of 100 runs to megabytes;
+// smaller pages keep every response small as issues and comments grow.
 const QUERY = `query($o: String!, $r: String!, $after: String) { repository(owner: $o, name: $r) {
-  issues(states: OPEN, first: 100, after: $after) { pageInfo { hasNextPage endCursor } nodes {
+  issues(states: OPEN, first: 25, after: $after) { pageInfo { hasNextPage endCursor } nodes {
     number title body author { login } assignees(first: 20) { nodes { login } } labels(first: 30) { nodes { name } }
     blockedBy(first: 30) { nodes { number state } }
     comments(last: 20) { nodes { author { login __typename } body } }
