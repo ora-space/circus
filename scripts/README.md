@@ -117,6 +117,26 @@ parent 还在等未关闭的依赖，但要先开发、先提 PR 时，用 `node
 - **总事项**：`brief` 把子事项挂在总事项下面，运行 issue 挂在它的 parent 下面，画成树；只在同一组里挂，所属的 issue 在别的组时，在行尾标出"总事项 #11"或"运行 → #11"。总事项不用 sub-issue 表达，sub-issue 只用来挂运行 issue。
 - **拆分**和这两者不同：一件事分给多人做，用 `/assign` 和运行 issue（第 4 条）。
 
+## 决策的生命周期
+
+决策 issue 只负责把决定做出来、记下来。落地（ADR、记忆 PR、实现）都由依赖它的 task 承接，决策 issue 不等它们完成。
+
+1. **提出**：作者开 `type:decision`，打 `status:needs-owner`，正文列选项、依据、代价。讨论和调研都评论在决策 issue 里。
+2. **拍板**：owner 在 issue 里写下结论，`/label status:needs-author` 交回作者。owner 需要先看 ADR 草稿再拍板时，草稿由依赖本决策的 ADR task 在 preflight 里起草（见下表）。
+3. **关闭**：结论写下后，作者按第 5 条写总结并关闭，不等 ADR 合并，也不等实现完成。总结写明结论、理由、被否定的方案，以及承接落地的 issue 编号；需要承接、但还没有对应 issue 的，关闭前先开好，让它依赖本决策。
+4. **转入落地**：决策关闭后，bot 在依赖它的 issue 下提醒，并把依赖都已关闭的 parent 下的 `preflight` 运行换成 `run`。各运行的作者对照结论核对已有的草稿和 PR，有出入先改，再重新打 `status:in-review`。
+
+承接的 issue 都依赖决策（`依赖：#N` 或 `/depend #N`），决策关闭前它们的运行都是 preflight，关闭后转为 run：
+
+| 承接方 | 决策关闭前（preflight） | 决策关闭后（run） |
+|---|---|---|
+| ADR task（`repo:specs`），落地属于 Ora 产品架构的结论 | 起草 ADR，开 specs PR 供 owner 拍板参考；PR 不合并 | 按结论修改 ADR，标为 `approved`，review 后由 owner 合并 |
+| 实现 task | 先开发、提 PR、请人 review；PR 一般不合并 | 对照结论（和已合并的 ADR）核对 PR，review 后由 owner 合并 |
+
+- 实现要以 ADR 为准时，实现 task 同时 `/depend` ADR task，ADR 合并、ADR task 关闭后实现的运行才转为 run。
+- 不要反过来让决策依赖 ADR task 或实现 task，也不要等 ADR 合并再关闭决策：ADR task 依赖决策，决策又等 ADR 合并，两边会互相卡住。
+- 结论长期成立、属于协作方式的，开记忆 PR，链接写进决策的总结。
+
 ## 5. 关闭前先总结
 
 关闭的 issue 要能被以后的搜索用上，所以每个 issue 关闭前：
@@ -205,7 +225,7 @@ circus/
 
 互斥的 label 族（每个 issue 至多一个值）在设置新值时自动替换旧值。
 
-- **`type:decision` 有长期价值。** 决策 issue 关闭后，标题和 `## 总结` 写明结论和理由，以后要查"当初为什么这么定"，用 `gh issue list -R ora-space/circus --state closed --label type:decision --search "<关键词>"` 就能找到。所以凡是要 owner 拍板的，都开成 `type:decision`：正文列选项、依据、代价，同时打 `status:needs-owner`。决策 issue 不开运行；要实现结论的 issue 依赖它，决策关闭前只能开 preflight（见"preflight"）。
+- **`type:decision` 有长期价值。** 决策 issue 关闭后，标题和 `## 总结` 写明结论和理由，以后要查"当初为什么这么定"，用 `gh issue list -R ora-space/circus --state closed --label type:decision --search "<关键词>"` 就能找到。所以凡是要 owner 拍板的，都开成 `type:decision`：正文列选项、依据、代价，同时打 `status:needs-owner`。决策 issue 不开运行；owner 写下结论后作者就关闭，ADR 和实现由依赖它的 issue 承接，这些 issue 在决策关闭前只能开 preflight（见"决策的生命周期"）。
 - **status 只表示"球在谁手里"。** 其余状态不用 label：在做 = 有未关闭的运行 issue，完成 = issue 已关闭。issue 关闭时 bot 移除它的 `status:*` 和 `review:*`。
   - 等 owner 的事，作者给自己的 issue 打 `status:needs-owner`（PR 待审打 `status:in-review`）；运行 issue 的作者改不了 parent，就打在自己的运行 issue 上。
   - owner 回复、拍板或提出要求后，打 `/label status:needs-author`（reviewer 在别人的运行 issue 上也可以，见"review 运行 issue"），它会替换掉 `needs-owner` 或 `in-review`，作者的 `brief` 会把这个 issue 放进"等我跟进"。只是顺手评论、不需要作者动作时，直接 `/unlabel status:needs-owner`。
