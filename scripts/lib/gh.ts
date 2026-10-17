@@ -2,10 +2,14 @@
 // that tests replace with a fake.
 import { execFileSync } from 'node:child_process';
 
+// execFileSync defaults to a 1 MiB stdout buffer and fails with ENOBUFS beyond it;
+// listing every open issue with comments already exceeds that.
+const maxBuffer = 256 * 1024 * 1024;
+
 export type Gh = (args: string[], input?: string) => string;
 
 export const gh: Gh = (args, input) =>
-  execFileSync('gh', args, { encoding: 'utf8', input: input ?? '', stdio: ['pipe', 'pipe', 'inherit'] });
+  execFileSync('gh', args, { encoding: 'utf8', input: input ?? '', maxBuffer, stdio: ['pipe', 'pipe', 'inherit'] });
 
 // git in a given directory; a failure throws with git's stderr as the message.
 export type Git = (args: string[]) => string;
@@ -14,7 +18,7 @@ export const git =
   (cwd: string): Git =>
   (args) => {
     try {
-      return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (e) {
       const stderr = String((e as { stderr?: unknown }).stderr ?? '').trim();
       throw new Error(stderr || (e as Error).message);
