@@ -289,28 +289,7 @@ export function referencedIssues(body: string | null | undefined, repo: string):
   return out;
 }
 
-// A merged PR does not close its issues: their authors do, after summarizing.
-function remindAuthors(gh: GitHub, payload: any): void {
-  const pr = payload.pull_request;
-  if (payload.action !== 'closed' || !pr?.merged || payload.sender?.type === 'Bot') return;
-  for (const n of referencedIssues(pr.body, payload.repository.full_name)) {
-    let issue: Issue;
-    try {
-      issue = gh.getIssue(n);
-    } catch {
-      continue;
-    }
-    if (issue.pull_request || issue.state !== 'open') continue;
-    gh.comment(
-      n,
-      `@${issue.user.login} PR #${pr.number} 已由 @${payload.sender.login} 合并。请作者把整个 issue 读一遍，写总结后关闭：` +
-        `\`node scripts/cli.ts close ${n} --title "<结果>" --summary-file <文件>\`。`,
-    );
-  }
-}
-
 export function handle(event: Event, gh: GitHub, board?: Board, effects?: Effects): void {
-  if (event.name === 'pull_request_target') return remindAuthors(gh, event.payload);
   if (RESYNC_EVENTS.includes(event.name)) {
     for (const item of gh.listOpenIssues()) {
       if (item.pull_request || parentOf(item.body) !== null) continue;

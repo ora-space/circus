@@ -596,29 +596,6 @@ test('closing someone else\'s issue is undone unless the summary records why', (
   assert.deepEqual(g.log, []);
 });
 
-const merged = (body: string, merged = true) => ({
-  name: 'pull_request_target',
-  payload: {
-    action: 'closed',
-    sender: user('owner'),
-    repository: { full_name: 'ora-space/circus' },
-    pull_request: { number: 22, merged, body },
-  },
-});
-
-test('a merged PR reminds the authors of the open issues it references', () => {
-  const f = fakeGitHub();
-  f.add({ number: 2, user: { login: 'bob' }, state: 'closed' });
-  f.add({ number: 3, pull_request: {} });
-  handle(merged('来源：#9\n\nRefs ora-space/circus#1\nFixes #2, closes #3 refs #77'), f.gh);
-  assert.deepEqual(f.log, [
-    'comment @alice PR #22 已由 @owner 合并。请作者把整个 issue 读一遍，写总结后关闭：`node scripts/cli.ts close 1 --title "<结果>" --summary-file <文件>`。',
-  ]);
-  const g = fakeGitHub();
-  handle(merged('Refs #1', false), g.gh);
-  assert.deepEqual(g.log, []);
-});
-
 test('referencedIssues reads closing keywords and Refs, not bare mentions or other repos', () => {
   assert.deepEqual(referencedIssues('Refs ora-space/circus#24\nfixes: #5\n来源：#12\nRefs ora-space/desktop#3\nResolves #24', 'ora-space/circus'), [24, 5]);
 });
