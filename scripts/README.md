@@ -165,6 +165,18 @@ parent 还在等未关闭的依赖，但要先开发、先提 PR 时，用 `node
 3. **用中文重新组织语言**写成 issue 标题和正文（不照抄原话）：标题说清楚要什么；正文写背景、目标或复现步骤、验收条件。然后 `node scripts/cli.ts new`。
 4. **开始调研**，把所有发现和思考评论到 issue：读了哪些代码和文档、结论、考虑过的方案和取舍、还没想清楚的点。调研过程留在 issue 里，而不是只留在对话里。
 
+## 查阅前同步
+
+每个会话首次查阅某个 `ora-space/<repo>` 的代码或文档前，先同步该仓库；跨仓库调研时逐个执行，specs 也一样。收到 PR 更新或要依据最新代码重新判断时，再次拉取并确认版本。
+
+1. **确定目标版本**：默认查 upstream 最新 `main`；用户指定 PR、分支、tag 或 commit 时，查指定版本。先检查仓库的 remote、当前分支、HEAD 和工作区状态，确认 upstream 指向 `ora-space/<repo>`（remote 名可以不同）。仓库尚未 clone 时，从对应 upstream 获取代码。
+2. **拉取目标**：默认执行 `git -C ora-space/<repo> fetch upstream main`；指定其他版本时拉取对应 ref，PR 用其最新 head。`node scripts/cli.ts sync` 只更新 circus；`worktree` 命令会拉取产品仓库 upstream/main，但不会把母库本地 main 的工作目录更新到最新。
+3. **从已确认的版本读取**：默认以刚拉取的 `upstream/main` 为准。可以用 `git show upstream/main:<path>` 读取；需要目录搜索时，在干净的本地 main 上执行 `git merge --ff-only upstream/main` 后读取，或使用指向目标 commit 的独立 worktree。fetch 成功不代表当前工作目录已经更新；从工作目录读取前核对实际 HEAD 与目标 commit；用 `git show` 时核对所用 ref 的 commit。指定 PR 时以最新 head SHA 为准，历史 tag/commit 保持用户指定的版本。
+4. **保留本地工作**：已有开发分支和未提交改动保持原样，不为查阅执行 reset、clean、自动 stash 或强制切换。需要分析本地改动时，将它们与 upstream 基线区分。无法快进或工作区不干净时，改用 `git show` 或独立 worktree 读取目标版本。
+5. **交代依据**：结论中注明所依据的仓库、ref 和 commit SHA；跨仓库分别注明。拉取失败时告诉用户原因和当前可用的本地版本，将结论标为基于本地快照，不能把它表述为最新代码。
+
+完成标准：目标 ref 已成功拉取，且实际读取的内容对应已确认的 commit；同步失败时，已明确说明版本限制。
+
 ## 开发产品仓库
 
 owner 没有另外指明时，按下面的方式工作。

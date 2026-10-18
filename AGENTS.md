@@ -44,6 +44,10 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 
 **决策**是最需要留痕的输入：待决的开成 `type:decision` 并打 `status:needs-owner`，正文列选项、依据、代价，请 owner 拍板。决策 issue 不开运行，它的 assignee 相当于 reviewer，在决策 issue 上 `/assign` 前先[提醒用户](scripts/README.md#决策-issue-的-assignee)；相关的 issue 都依赖它，决策关闭前只能开 [preflight](scripts/README.md#preflight依赖未完成时先做)。owner 拍板时在 issue 里写下结论，并 `/label status:needs-author` 提醒作者跟进；作者随即按 [关闭前先总结](scripts/README.md#5-关闭前先总结) 关闭，不等 ADR 合并或实现完成。落地由依赖决策的 issue 承接：属于 Ora 产品架构的，开 ADR task 在 [ora-space/specs](https://github.com/ora-space/specs) 写 ADR；结论长期有效的，开记忆 PR。完整流程见 [决策的生命周期](scripts/README.md#决策的生命周期)。
 
+## 查阅产品仓库
+
+查阅 `ora-space/<repo>` 的代码或文档前，即使只是回答问题、调研或 review，也必须先按 [查阅前同步](scripts/README.md#查阅前同步) 拉取目标仓库并确认实际读取的版本；包括作为架构依据的 specs。会话开始的 `sync` 只同步 circus，不同步产品仓库。
+
 ## 写入边界
 
 - 所有讨论统一在 upstream 仓库 `ora-space/circus` 的 issue 里进行，即使本地是 fork 的 clone。fork 只用来提 PR，不在 fork 上开 issue、评论或改 label。`node scripts/cli.ts` 的命令总是指向 `ora-space/circus`；直接用 `gh issue` / `gh pr` 时必须带 `-R ora-space/circus`，否则 gh 可能落到 fork 上。circus 是私有仓库，成员以协作者身份参与。
