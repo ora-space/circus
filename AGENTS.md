@@ -55,12 +55,12 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 - 只有作者关闭自己的 issue，owner 也不例外：别人的 issue 做完了，在里面提醒作者总结后关闭。确需代关（作者离开、事项作废）时用 `close --for-author "<理由>"`，否则 bot 会重新打开。
 - 运行 issue 有 `review:lgtm` 时，owner 可以据此减少审查；合并仍由 owner 决定。
 - `preflight` 运行 issue 是 parent 依赖未完成时先做的开发（见 [preflight](scripts/README.md#preflight依赖未完成时先做)）：它的 PR 一般等依赖关闭、bot 转为 `run`、作者按结论核对后再合并。
-- owner 合并 PR 前，先看改动文件列表（`gh pr view N -R <repo> --json files`）：每个文件都是[交付物](scripts/README.md#开发产品仓库)才合并，混入计划、进度、实现日志这类过程记录时请作者移除。产品仓库的 PR 还要核对它实现的 specs ADR（见 [ADR 状态跟着实现走](scripts/README.md#开发产品仓库)）：描述里没写 ADR 状态，或者本 PR 补齐了实现、ADR 却仍是 `approved` 且没有改为 `implemented` 的 specs PR，先请作者补上；产品 PR 合并后再合并这份 specs PR。合并时只合并 PR，不顺手关闭关联的 issue。bot 不处理 PR 事件，PR 合并后不会自动提醒：circus 和产品仓库的 PR 都一样，合并后在关联的 issue（产品仓库是运行 issue）里评论提醒作者，并在同一条评论里 `/label status:needs-author` 交回作者：合并后还有验收、收尾或关闭要作者做，只 `/unlabel status:in-review` 会让 issue 不在任何人的待办里。
+- owner 合并 PR 前，先看改动文件列表（`gh pr view N -R <repo> --json files`）：每个文件都是[交付物](scripts/README.md#开发产品仓库)才合并，混入计划、进度、实现日志这类过程记录时请作者移除。产品仓库的 PR 还要核对它实现的 specs ADR（见 [ADR 状态跟着实现走](scripts/README.md#开发产品仓库)）：描述里没写 ADR 状态，或者本 PR 补齐了实现、ADR 却仍是 `approved` 且还没有落地运行开出改为 `implemented` 的 specs PR，先请作者补上；产品 PR 合并后再合并这份 specs PR（见[三个运行](scripts/README.md#开发产品仓库)）。合并时只合并 PR，不顺手关闭关联的 issue。bot 不处理 PR 事件，PR 合并后不会自动提醒：circus 和产品仓库的 PR 都一样，合并后在关联的 issue（产品仓库是运行 issue）里评论提醒作者，并在同一条评论里 `/label status:needs-author` 交回作者：合并后还有验收、收尾或关闭要作者做，只 `/unlabel status:in-review` 会让 issue 不在任何人的待办里。
 - label 和 assignee 只通过 bot 修改：打开 issue 时写在正文里，之后用评论里的斜杠命令。权限见 [`scripts/README.md`](scripts/README.md#3-权限)。bot 在 GitHub Actions 里异步执行，常要几十秒到一分钟以上：分几次查看、累计等满一分钟以上仍没生效，先查 Actions 运行状态，再决定是否重发（见 [`scripts/README.md`](scripts/README.md#2-什么时候怎么改-label)）。
 - 记忆和协议只能经 PR 改，PR 开在 `ora-space/circus`（从 fork 提时 `gh pr create -R ora-space/circus --head <login>:<branch>`），合并由 owner 决定。
 - Ora 产品仓库只承载代码和 PR，不在那里开 issue 或展开讨论；产品仓库里已有的 issue 转为 circus issue（正文链接原 issue），后续讨论在 circus。用户已经说清楚要做的事可以直接开 PR（PR 由 owner 审），其余写入先得到用户同意。
 - 在产品仓库工作时，用户没有另外指明就按 [开发产品仓库](scripts/README.md#开发产品仓库)：fork clone 在 `ora-space/<repo>`，每项开发用 `node scripts/cli.ts worktree` 基于最新 upstream main 建 worktree。先遵守该仓库的 `AGENTS.md` / `CLAUDE.md`；feature 和 refactor 先按 [specs 根决策门禁](memory/rules/specs-root-decision-gate.md) 检查；commit 按 [commit 拆分偏好](memory/preferences/pr-commit-split.md)。
-- 产品仓库的 PR 只装[交付物](scripts/README.md#开发产品仓库)，开 PR 前逐个核对改动文件；开发过程记录写在运行 issue 里。PR 描述写明它实现的 ADR 状态，补齐了实现的同时开 specs PR 把 ADR 改为 `implemented`。
+- 产品仓库的 PR 只装[交付物](scripts/README.md#开发产品仓库)，开 PR 前逐个核对改动文件；开发过程记录写在运行 issue 里。PR 描述写明它实现的 ADR 状态；task 要改 specs 时按[三个运行](scripts/README.md#开发产品仓库)推进：ADR 评审到 `approved`、产品 PR、ADR 改为 `implemented` 各一个运行。
 - 产品仓库多为公开仓库：每个 PR 都关联运行 issue，不直接关联普通 issue：PR 描述用 `Refs ora-space/circus#<运行 issue>`，但不把 circus 里的讨论和记忆内容复制过去。PR 链接评论到运行 issue。
 - 进度和讨论只存在 issue 里；记忆和协议文件里不写进度、TODO 或状态。
 
