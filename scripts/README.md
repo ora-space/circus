@@ -133,7 +133,7 @@ parent 还在等未关闭的依赖，但要先开发、先提 PR 时，用 `node
 | ADR task（`repo:specs`），落地属于 Ora 产品架构的结论 | 起草 ADR，开 specs PR 供 owner 拍板参考；PR 不合并 | 按结论修改 ADR，标为 `approved`，review 后由 owner 合并 |
 | 实现 task | 先开发、提 PR、请人 review；PR 一般不合并 | 对照结论（和已合并的 ADR）核对 PR，review 后由 owner 合并 |
 
-- 实现要以 ADR 为准时，实现 task 同时 `/depend` ADR task，ADR 合并、ADR task 关闭后实现的运行才转为 run。
+- 实现要以 ADR 为准时，实现 task 同时 `/depend` ADR task，ADR 合并、ADR task 关闭后实现的运行才转为 run。ADR 和实现属于同一个 task 时，不拆成两个 task，按[三个运行](#开发产品仓库)在同一个 parent 下推进。
 - 不要反过来让决策依赖 ADR task 或实现 task，也不要等 ADR 合并再关闭决策：ADR task 依赖决策，决策又等 ADR 合并，两边会互相卡住。
 - 结论长期成立、属于协作方式的，开记忆 PR，链接写进决策的总结。
 
@@ -211,10 +211,20 @@ circus/
 **ADR 状态跟着实现走**：specs 的 ADR 按 `proposed` → `approved` → `implemented` 推进（规则见 specs 的 `AGENTS.md`）。实现合并了 ADR 还停在 `approved`，后来的人和 agent 就分不清它是已经兑现的系统承诺，还是还没做的计划。所以产品仓库的 PR 描述要写明它和 ADR 的关系：
 
 - 列出本 PR 实现的 ADR（specs 里的路径），逐份写明本 PR 合并后是否已全部实现。
-- 全部实现的：同时在 specs 开 PR，把 ADR 改为 `implemented`，按最终实现同步正文（偏离 approved 决策的先在正文写明实际采用的决策和原因），`Refs` 同一个运行 issue，链接写进产品 PR 描述和运行 issue。一份 ADR 由多个 PR 或多个仓库实现时，由补齐最后一块的 PR 带上这份 specs PR。
+- 全部实现的：产品 PR 合并前，由落地运行（见下文"三个运行"）在 specs 开 PR，把 ADR 改为 `implemented`，按最终实现同步正文（偏离 approved 决策的先在正文写明实际采用的决策和原因），链接写进产品 PR 描述和实现运行。一份 ADR 由多个 PR 或多个仓库实现时，由补齐最后一块的 PR 带上这份 specs PR。
 - 只实现了一部分的：写明 ADR 仍为 `approved`、还差哪些、由哪个 issue 承接。
 - 依据的 ADR 还是 `proposed`：决策没定，PR 先不合并，等 ADR 改为 `approved`。
 - 不涉及 ADR 的，写一句"不涉及 ADR"，让 reviewer 和 owner 知道已经查过。
+
+**三个运行**：一个 task 既要写或改 ADR、又要改产品仓库时，在同一个 parent 下按顺序开三个运行 issue，每个运行只带一类 PR：
+
+| 运行 | PR | 合并时机 |
+|---|---|---|
+| 1. ADR | specs PR：ADR 从 `proposed` 评审到 `approved`，同时补核心测试用例 | owner 批准后合并 |
+| 2. 实现 | 产品仓库 PR，描述写明 ADR 状态 | ADR 已合并为 `approved` 之后；开发可以和运行 1 并行 |
+| 3. 落地 | specs PR：ADR 从 `approved` 改为 `implemented`，按最终实现同步正文和用例证据 | 运行 2 的 PR review 通过后开，产品 PR 合并后合并 |
+
+每个运行的 PR 合并后，`brief` 分别提醒它的作者关闭；ADR 评审、实现 review 和落地同步各自留痕。运行 1 的 specs PR 只装 ADR 和核心用例：引用未合并代码的用例证据留到运行 3。
 
 **步骤**：
 
@@ -222,8 +232,8 @@ circus/
 2. 建 worktree：`node scripts/cli.ts worktree <repo> <branch>`。`ora-space/<repo>` 不存在时先 fork 并 clone；然后拉取 upstream 最新的 main，顺手把 fork 的 main 推到最新，再基于 `upstream/main` 建分支和 worktree。
 3. 在 worktree 里开发、commit，阶段性成果及时 push 到 fork：`git push -u origin <branch>`。
 4. 核对改动文件：`git diff --name-only upstream/main...HEAD` 列出的每个文件都是交付物；过程记录移到运行 issue 后从分支删除。
-5. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<运行 issue>` 和 ADR 状态（见上文"ADR 状态跟着实现走"），需要时同时开把 ADR 改为 `implemented` 的 specs PR，PR 链接都评论到运行 issue。
-6. 关闭运行 issue 前，确认 ADR 已经是该有的状态：要转 `implemented` 的 specs PR 已合并，没转的在总结里写明由哪个 issue 承接。
+5. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<运行 issue>` 和 ADR 状态（见上文"ADR 状态跟着实现走"），PR 链接评论到运行 issue。补齐了实现的，review 通过后开落地运行，由它开把 ADR 改为 `implemented` 的 specs PR。
+6. 关闭实现运行前，确认 ADR 已经是该有的状态：要转 `implemented` 的，落地运行的 specs PR 已经开出；没转的在总结里写明由哪个 issue 承接。
 7. PR 合并或关闭后，关闭运行 issue 时 `close` 会自动清理对应的 worktree 和本地分支（规则见"关闭前先总结"）；也可以单独运行 `node scripts/cli.ts cleanup <运行 issue>`。不要手动 `branch -D`，除非确认分支上没有没推上去的工作。
 
 不在 `ora-space/<repo>` 的主目录里开发：它只停在 main，作为 worktree 的母库。
