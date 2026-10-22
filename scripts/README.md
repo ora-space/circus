@@ -57,7 +57,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 
 ### 重跑产品仓库的 CI
 
-成员对产品仓库只有读权限，不能重跑 PR 的 CI，由 bot 代劳：在运行 issue 里评论 `/rerun desktop#123`（也可以写 PR 链接，一行可以列多个）。bot 只接受描述里写了 `Refs ora-space/circus#<本运行 issue>` 的未关闭 PR；在 PR 的最新 head 上，每个 workflow 取最近一次 `pull_request` 运行，失败、取消或超时的就重跑其中失败的 job，还在跑的不动，然后回复重跑的链接。没有可重跑的运行时回复原因。重跑只是重放原来的运行，fork PR 依旧拿不到 secret。
+成员对产品仓库只有读权限，不能重跑 PR 的 CI，由 bot 代劳：在运行 issue 里评论 `/rerun desktop#123`（也可以写 PR 链接，一行可以列多个），CLI 是 `node scripts/cli.ts rerun <运行 issue> desktop#123`。bot 只接受描述里写了 `Refs ora-space/circus#<本运行 issue>` 的未关闭 PR；在 PR 的最新 head 上，每个 workflow 取最近一次 `pull_request` 运行，失败、取消或超时的就重跑其中失败的 job，还在跑的不动，然后回复重跑的链接。没有可重跑的运行时回复原因。重跑只是重放原来的运行，fork PR 依旧拿不到 secret。
 
 ## review 运行 issue
 
@@ -239,6 +239,7 @@ circus/
 3. 在 worktree 里开发、commit，阶段性成果及时 push 到 fork：`git push -u origin <branch>`。
 4. 核对改动文件：`git diff --name-only upstream/main...HEAD` 列出的每个文件都是交付物；过程记录移到运行 issue 后从分支删除。
 5. 开 PR 到 upstream：`gh pr create -R ora-space/<repo> --head <自己的 login>:<branch>`，描述写 `Refs ora-space/circus#<运行 issue>` 和 ADR 状态（见上文"ADR 状态跟着实现走"），PR 链接评论到运行 issue。补齐了实现的，review 通过后开落地运行，由它开把 ADR 改为 `implemented` 的 specs PR。
+   PR 的 CI 失败时先看日志：代码的问题就修了再 push；超时、偶发失败这类和改动无关的，用 `node scripts/cli.ts rerun <运行 issue> <repo>#<PR>` 让 bot 重跑失败的 job（成员没有权限自己重跑，见"重跑产品仓库的 CI"），不要推空 commit 来触发。
 6. 关闭实现运行前，确认 ADR 已经是该有的状态：要转 `implemented` 的，落地运行的 specs PR 已经开出；没转的在总结里写明由哪个 issue 承接。
 7. PR 合并或关闭后，关闭运行 issue 时 `close` 会自动清理对应的 worktree 和本地分支（规则见"关闭前先总结"）；也可以单独运行 `node scripts/cli.ts cleanup <运行 issue>`。不要手动 `branch -D`，除非确认分支上没有没推上去的工作。
 
@@ -285,6 +286,7 @@ circus/
 | `label N [+]L... -L... [--sha C]` | 评论 `/label`、`/unlabel`；`--sha` 在评论里写明审过的 commit，打 `review:lgtm` 时要带 |
 | `assign N [+]@U... -@U...` | 评论 `/assign`、`/unassign` |
 | `depend N [+]#M... -#M...` | 评论 `/depend`、`/undepend` |
+| `rerun N <repo>#<PR>...` | 在运行 issue 评论 `/rerun`，由 bot 重跑 PR 上失败的 CI（见"重跑产品仓库的 CI"） |
 | `close N --title T --summary-file F [--not-planned] [--for-author R] [--keep-local]` | 改标题、写总结、关闭；只限作者，代关要写理由；关闭后清理本地工作 |
 | `cleanup N [--dry-run]` | 清理为 #N 做的本地 worktree 和分支：只限自己 fork 提出、已结束、没有额外提交、worktree 干净的 PR 分支 |
 | `worktree <repo> <type>/[<issue>-]<slug>` | 产品仓库：按需 fork 并 clone，基于最新 upstream main 建分支和 worktree |

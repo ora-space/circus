@@ -9,6 +9,7 @@ import { command as brief } from './brief/index.ts';
 import { command as cleanup } from './cleanup/index.ts';
 import { command as close } from './close/index.ts';
 import { command as depend } from './depend/index.ts';
+import { command as rerun } from './rerun/index.ts';
 import { command as label } from './label/index.ts';
 import { command as memory } from './memory/index.ts';
 import { command as notify } from './notify/index.ts';
@@ -21,7 +22,7 @@ import { command as updates } from './updates/index.ts';
 import { command as whoami } from './whoami/index.ts';
 import { command as worktree } from './worktree/index.ts';
 
-export const COMMANDS: Record<string, Command> = { sync, whoami, brief, new: create, run, show, updates, label, assign, depend, close, cleanup, worktree, memory, setup, bot, notify };
+export const COMMANDS: Record<string, Command> = { sync, whoami, brief, new: create, run, show, updates, label, assign, depend, rerun, close, cleanup, worktree, memory, setup, bot, notify };
 
 export function help(): string {
   const lines = Object.values(COMMANDS).map((c) => '  ' + c.usage.split('\n').join('\n  '));
