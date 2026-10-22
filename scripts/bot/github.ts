@@ -18,6 +18,23 @@ export interface Issue {
   issue_dependencies_summary?: { blocked_by: number };
 }
 
+// A pull request in a product repository of the same organization.
+export interface Pull {
+  state: string;
+  body: string | null;
+  head: { sha: string };
+}
+
+// A workflow run; conclusion is null until it completes.
+export interface WorkflowRun {
+  id: number;
+  name: string;
+  workflow_id: number;
+  status: string;
+  conclusion: string | null;
+  html_url: string;
+}
+
 export interface GitHub {
   getIssue(n: number): Issue;
   // Replaces the whole label set; avoids 404s from removing a label that is already gone.
@@ -39,10 +56,22 @@ export interface GitHub {
   listOpenIssues(): Issue[];
   // Repository permission of a user: admin, write, read or none.
   permission(login: string): string;
+  // Product repositories (bare names, in the circus organization): a pull request, the
+  // pull_request workflow runs of a commit, and re-running a run's failed jobs.
+  getPull(repo: string, n: number): Pull;
+  pullRuns(repo: string, sha: string): WorkflowRun[];
+  rerunFailedJobs(repo: string, runId: number): void;
 }
 
-export function ghGitHub(gh: Gh, repo: string): GitHub {
+// products is gh with the token scoped to the product repositories; without it the product
+// calls fail, so only /rerun is affected.
+export function ghGitHub(gh: Gh, repo: string, products?: Gh): GitHub {
   const base = `repos/${repo}/issues`;
+  const org = repo.split('/')[0];
+  const product = () => {
+    if (!products) throw new Error('bot 没有产品仓库的 token');
+    return products;
+  };
   return {
     getIssue: (n) => api<Issue>(gh, 'GET', `${base}/${n}`),
     setLabels: (n, labels) => void api(gh, 'PUT', `${base}/${n}/labels`, { labels }),
@@ -60,5 +89,10 @@ export function ghGitHub(gh: Gh, repo: string): GitHub {
     removeBlockedBy: (n, id) => void api(gh, 'DELETE', `${base}/${n}/dependencies/blocked_by/${id}`),
     listOpenIssues: () => apiList<Issue>(gh, `${base}?state=open&per_page=100`),
     permission: (login) => api<{ permission: string }>(gh, 'GET', `repos/${repo}/collaborators/${login}/permission`).permission,
+    getPull: (name, n) => api<Pull>(product(), 'GET', `repos/${org}/${name}/pulls/${n}`),
+    pullRuns: (name, sha) =>
+      api<{ workflow_runs: WorkflowRun[] }>(product(), 'GET', `repos/${org}/${name}/actions/runs?event=pull_request&head_sha=${sha}&per_page=100`)
+        .workflow_runs,
+    rerunFailedJobs: (name, id) => void api(product(), 'POST', `repos/${org}/${name}/actions/runs/${id}/rerun-failed-jobs`),
   };
 }

@@ -47,10 +47,25 @@ jobs:
           app-id: ${{ vars.CIRCUS_APP_ID }}
           private-key: ${{ secrets.CIRCUS_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
+          repositories: circus
+      # /rerun: only Actions on the product repositories that run PR CI, and only for comments.
+      - id: products
+        if: ${{ github.event_name == 'issue_comment' }}
+        # A failure here must not stop label handling; /rerun then reports it cannot reach the PR.
+        continue-on-error: true
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.CIRCUS_APP_ID }}
+          private-key: ${{ secrets.CIRCUS_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: desktop,cloud,marketplace
+          permission-actions: write
+          permission-pull-requests: read
       - run: node scripts/cli.ts bot
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.notification_test) }}
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          CIRCUS_PRODUCTS_TOKEN: ${{ steps.products.outputs.token }}
           CIRCUS_NOTIFICATIONS_ENABLED: ${{ vars.CIRCUS_NOTIFICATIONS_ENABLED }}
           CIRCUS_OWNER_RECIPIENTS: ${{ vars.CIRCUS_OWNER_RECIPIENTS }}
           FEISHU_APP_ID: ${{ vars.FEISHU_APP_ID }}

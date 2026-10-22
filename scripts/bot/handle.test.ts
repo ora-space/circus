@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { authorize, handle, referencedIssues } from './handle.ts';
-import type { GitHub, Issue } from './github.ts';
+import type { GitHub, Issue, Pull, WorkflowRun } from './github.ts';
 import type { Board, BoardValues } from '../lib/board.ts';
 import { parentOf } from '../lib/run.ts';
 
@@ -24,6 +24,10 @@ const newIssue = (fields: Partial<Issue>): Issue => ({
 // in the store. Writes to #1 are logged bare, writes to other issues are prefixed "#n ".
 function fakeGitHub(issue: Partial<Issue> = {}, assignable = ['alice', 'bob', 'carol', 'owner'], writers = ['owner']) {
   const store = new Map<number, Issue>();
+  // Product PRs by "repo#n", workflow runs by head SHA, and runs whose re-run GitHub refuses.
+  const pulls = new Map<string, Pull>();
+  const runs = new Map<string, WorkflowRun[]>();
+  const refuse: number[] = [];
   // Dependencies: issue number -> numbers of its blockers.
   const blockers = new Map<number, number[]>();
   const byId = (id: number) => [...store.values()].find((i) => i.id === id)!;
@@ -86,19 +90,29 @@ function fakeGitHub(issue: Partial<Issue> = {}, assignable = ['alice', 'bob', 'c
       summarize(n);
     },
     listOpenIssues: () => [...store.values()].filter((i) => i.state === 'open').map((i) => structuredClone(i)),
+    getPull: (repo, n) => {
+      const pull = pulls.get(`${repo}#${n}`);
+      if (!pull) throw new Error('HTTP 404');
+      return structuredClone(pull);
+    },
+    pullRuns: (_repo, sha) => structuredClone(runs.get(sha) ?? []),
+    rerunFailedJobs: (repo, id) => {
+      if (refuse.includes(id)) throw new Error('HTTP 403: Resource not accessible by integration');
+      log.push(`rerun ${repo} ${id}`);
+    },
   };
   const add = (fields: Partial<Issue>) => {
     const i = newIssue(fields);
     store.set(i.number, i);
     return i;
   };
-  return { gh, state, log, add };
+  return { gh, state, log, add, pulls, runs, refuse };
 }
 
 const user = (login: string) => ({ login, type: 'User' });
 const commentEvent = (gh: ReturnType<typeof fakeGitHub>, actor: string, body: string) => {
   handle(
-    { name: 'issue_comment', payload: { action: 'created', issue: gh.state, sender: user(actor), comment: { id: 42, body } } },
+    { name: 'issue_comment', payload: { action: 'created', issue: gh.state, sender: user(actor), comment: { id: 42, body }, repository: { full_name: 'ora-space/circus' } } },
     gh.gh,
   );
 };
@@ -598,4 +612,66 @@ test('closing someone else\'s issue is undone unless the summary records why', (
 
 test('referencedIssues reads closing keywords and Refs, not bare mentions or other repos', () => {
   assert.deepEqual(referencedIssues('Refs ora-space/circus#24\nfixes: #5\n来源：#12\nRefs ora-space/desktop#3\nResolves #24', 'ora-space/circus'), [24, 5]);
+});
+
+// A run (#1 by alice, reviewed by bob) whose desktop#7 PR has two workflows on its head:
+// pr-tests failed twice (the newer run counts), build is still running, lint passed.
+function rerunFixture(prBody = 'Refs ora-space/circus#1') {
+  const f = fakeGitHub({ body: 'Parent: #5', assignees: [{ login: 'bob' }] });
+  f.add({ number: 5 });
+  f.pulls.set('desktop#7', { state: 'open', body: prBody, head: { sha: 'abcdef1234567890' } });
+  const run = (id: number, workflow_id: number, name: string, status: string, conclusion: string | null): WorkflowRun =>
+    ({ id, workflow_id, name, status, conclusion, html_url: `https://github.com/ora-space/desktop/actions/runs/${id}` });
+  f.runs.set('abcdef1234567890', [
+    run(10, 1, 'pr-tests', 'completed', 'failure'),
+    run(11, 1, 'pr-tests', 'completed', 'failure'),
+    run(20, 2, 'build', 'in_progress', null),
+    run(30, 3, 'lint', 'completed', 'success'),
+  ]);
+  return f;
+}
+
+test('/rerun re-runs the failed jobs of the newest run per workflow and links them', () => {
+  for (const [actor, arg] of [['alice', 'desktop#7'], ['bob', 'https://github.com/ora-space/desktop/pull/7'], ['owner', 'desktop#7']]) {
+    const f = rerunFixture();
+    commentEvent(f, actor, `/rerun ${arg}`);
+    assert.deepEqual(f.log.filter((l) => !l.startsWith('permission')), [
+      'rerun desktop 11',
+      `comment @${actor} 已重跑 CI：\n- desktop#7（abcdef1）已重跑失败的 job：[pr-tests](https://github.com/ora-space/desktop/actions/runs/11)，还在跑：build`,
+      'react 42 +1',
+    ]);
+  }
+});
+
+test('/rerun is for the run\'s author, assignees and the owner, on runs only', () => {
+  const f = rerunFixture();
+  commentEvent(f, 'carol', '/rerun desktop#7');
+  assert.equal(f.log.filter((l) => l.startsWith('rerun')).length, 0);
+  assert.match(f.log.at(-1)!, /只有作者 @alice 和有写权限的人以及 assignee 可以重跑 CI/);
+
+  const plain = fakeGitHub();
+  plain.pulls.set('desktop#7', { state: 'open', body: 'Refs ora-space/circus#1', head: { sha: 'abc' } });
+  commentEvent(plain, 'alice', '/rerun desktop#7');
+  assert.match(plain.log.at(-1)!, /只能在运行 issue 里重跑/);
+});
+
+test('/rerun refuses PRs that do not reference the run, and reports why nothing ran', () => {
+  const cases: [string, (f: ReturnType<typeof rerunFixture>) => void, RegExp][] = [
+    ['desktop#7', (f) => f.pulls.set('desktop#7', { ...f.pulls.get('desktop#7')!, body: 'Refs #1' }), /描述里没有 `Refs ora-space\/circus#1`/],
+    ['desktop#7', (f) => f.pulls.set('desktop#7', { ...f.pulls.get('desktop#7')!, body: 'Refs ora-space/circus#12' }), /描述里没有/],
+    ['desktop#7', (f) => f.pulls.set('desktop#7', { ...f.pulls.get('desktop#7')!, state: 'closed' }), /desktop#7 已关闭/],
+    ['desktop#8', () => {}, /取不到 desktop#8/],
+    ['7', () => {}, /7 不是 PR/],
+    ['desktop#7', (f) => f.runs.set('abcdef1234567890', []), /在 abcdef1 上没有 CI 运行/],
+    ['desktop#7', (f) => f.runs.get('abcdef1234567890')!.splice(0, 2), /没有失败的 CI 运行，还在跑：build/],
+    ['desktop#7', (f) => f.refuse.push(11), /desktop#7 重跑失败：pr-tests（HTTP 403/],
+  ];
+  for (const [arg, setup, error] of cases) {
+    const f = rerunFixture();
+    setup(f);
+    commentEvent(f, 'alice', `/rerun ${arg}`);
+    assert.equal(f.log.filter((l) => l.startsWith('rerun')).length, 0, arg);
+    assert.match(f.log.at(-1)!, /以下命令有问题/);
+    assert.match(f.log.at(-1)!, error);
+  }
 });

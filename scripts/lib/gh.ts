@@ -11,6 +11,12 @@ export type Gh = (args: string[], input?: string) => string;
 export const gh: Gh = (args, input) =>
   execFileSync('gh', args, { encoding: 'utf8', input: input ?? '', maxBuffer, stdio: ['pipe', 'pipe', 'inherit'] });
 
+// gh acting with another token, e.g. the bot's narrower token for the product repositories.
+export const ghWithToken =
+  (token: string): Gh =>
+  (args, input) =>
+    execFileSync('gh', args, { encoding: 'utf8', input: input ?? '', maxBuffer, stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, GH_TOKEN: token } });
+
 // git in a given directory; a failure throws with git's stderr as the message.
 export type Git = (args: string[]) => string;
 

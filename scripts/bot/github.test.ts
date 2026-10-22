@@ -30,3 +30,22 @@ test('ghGitHub maps the port onto REST calls through gh api', () => {
     ],
   );
 });
+
+test('product calls go through the product token, and fail without one', () => {
+  const circus = fakeContext();
+  const products = fakeContext((args) => (args[3].includes('/actions/runs?') ? '{"workflow_runs":[]}' : '{}'));
+  const gh = ghGitHub(circus.ctx.gh, 'o/r', products.ctx.gh);
+  gh.getPull('desktop', 12);
+  assert.deepEqual(gh.pullRuns('desktop', 'abc'), []);
+  gh.rerunFailedJobs('desktop', 34);
+  assert.equal(circus.calls.length, 0);
+  assert.deepEqual(
+    products.calls.map((c) => `${c.args[2]} ${c.args[3]}`),
+    [
+      'GET repos/o/desktop/pulls/12',
+      'GET repos/o/desktop/actions/runs?event=pull_request&head_sha=abc&per_page=100',
+      'POST repos/o/desktop/actions/runs/34/rerun-failed-jobs',
+    ],
+  );
+  assert.throws(() => ghGitHub(circus.ctx.gh, 'o/r').getPull('desktop', 12), /没有产品仓库的 token/);
+});

@@ -4,15 +4,16 @@
 //   /label repo:desktop repo:specs     /unlabel repo:specs
 //   /assign @alice @bob                 /unassign @bob
 //   /depend #13 #14                     /undepend #14
+//   /rerun desktop#123                  (re-runs the failed CI of a run's product PR)
 
 import { prose } from './markdown.ts';
 
-export const VERBS = ['label', 'unlabel', 'assign', 'unassign', 'depend', 'undepend'] as const;
+export const VERBS = ['label', 'unlabel', 'assign', 'unassign', 'depend', 'undepend', 'rerun'] as const;
 export type Verb = (typeof VERBS)[number];
 
 export interface SlashCommand {
   verb: Verb;
-  args: string[]; // label names, logins without "@", or issue numbers without "#"
+  args: string[]; // label names, logins without "@", issue numbers without "#", or PRs (repo#N or URL)
 }
 
 const SIGIL: Partial<Record<Verb, string>> = { assign: '@', unassign: '@', depend: '#', undepend: '#' };

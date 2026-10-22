@@ -10,10 +10,11 @@
 //   - refuses runs of decisions, makes runs of issues waiting on a decision preflights, and
 //     turns preflights into runs once their parent has no open dependencies,
 //   - lets others review runs awaiting review (review:lgtm, status:needs-author),
+//   - re-runs the failed CI of a run's product PR for members, who cannot re-run it themselves,
 //   - drops status and review labels on close and mirrors issues onto the board (see lib/board.ts);
 //     nobody else writes to the board.
 // Events caused by bots (including itself) are ignored, so its own writes do not loop.
-import type { GitHub, Issue } from './github.ts';
+import type { GitHub, Issue, WorkflowRun } from './github.ts';
 import { boardValues, type Board } from '../lib/board.ts';
 import { dependsFromBody } from '../lib/deps.ts';
 import { applyLabels, isBotLabel, isKnown, labelsFromBody } from '../lib/labels.ts';
@@ -59,6 +60,8 @@ export function authorize(cmd: SlashCommand, actor: string, issue: Issue, isWrit
       const others = cmd.args.filter((u) => u !== actor);
       return others.length ? `只有${who}可以移除别人：${others.map((u) => `@${u}`).join(' ')}` : null;
     }
+    case 'rerun':
+      return logins(issue).includes(actor) ? null : `只有${who}以及 assignee 可以重跑 CI`;
   }
 }
 
@@ -87,8 +90,62 @@ function reviewRule(label: string, actor: string, issue: Issue, labels: string[]
   return null;
 }
 
-function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashCommand[], comment: string, effects?: Effects): string[] {
+// A product PR named as repo#N or by its URL, within the circus organization.
+function pullRef(arg: string, org: string): { repo: string; n: number } | null {
+  const m = /^([\w.-]+)#(\d+)$/.exec(arg) ?? new RegExp(`^https://github\\.com/${org}/([\\w.-]+)/pull/(\\d+)/?$`).exec(arg);
+  return m ? { repo: m[1], n: Number(m[2]) } : null;
+}
+
+// Conclusions of a run whose failed (or cancelled) jobs are worth re-running.
+const RERUNNABLE = ['failure', 'cancelled', 'timed_out', 'startup_failure'];
+
+// Re-runs the failed jobs of the latest pull_request run of each workflow on the PR's head.
+// Only PRs that reference this run issue qualify, so /rerun reaches no unrelated PR.
+// Returns a line for the reply, and whether it is a problem.
+function rerunPull(gh: GitHub, run: Issue, arg: string, circus: string): { line: string; ok: boolean } {
+  const [org] = circus.split('/');
+  const ref = pullRef(arg, org);
+  if (!ref) return { line: `${arg} 不是 PR，写成 desktop#123 或 PR 链接`, ok: false };
+  const name = `${ref.repo}#${ref.n}`;
+  let pull;
+  try {
+    pull = gh.getPull(ref.repo, ref.n);
+  } catch {
+    return { line: `取不到 ${name}：PR 不存在，或 bot 没有这个仓库的权限`, ok: false };
+  }
+  if (pull.state !== 'open') return { line: `${name} 已关闭`, ok: false };
+  const escaped = circus.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!new RegExp(`\\brefs\\s*:?\\s+${escaped}#${run.number}(?!\\d)`, 'i').test(pull.body ?? '')) {
+    return { line: `${name} 的描述里没有 \`Refs ${circus}#${run.number}\``, ok: false };
+  }
+  const sha = pull.head.sha.slice(0, 7);
+  // A workflow can run more than once on one commit (e.g. after reopening); the newest counts.
+  const latest = new Map<number, WorkflowRun>();
+  for (const r of gh.pullRuns(ref.repo, pull.head.sha)) if (r.id > (latest.get(r.workflow_id)?.id ?? 0)) latest.set(r.workflow_id, r);
+  const runs = [...latest.values()];
+  if (!runs.length) return { line: `${name} 在 ${sha} 上没有 CI 运行`, ok: false };
+  const failed = runs.filter((r) => r.status === 'completed' && RERUNNABLE.includes(r.conclusion ?? ''));
+  const pending = runs.filter((r) => r.status !== 'completed').map((r) => r.name);
+  const busy = pending.length ? `，还在跑：${pending.join('、')}` : '';
+  if (!failed.length) return { line: `${name} 在 ${sha} 上没有失败的 CI 运行${busy}`, ok: false };
+  const done: string[] = [];
+  const refused: string[] = [];
+  for (const r of failed) {
+    try {
+      gh.rerunFailedJobs(ref.repo, r.id);
+      done.push(`[${r.name}](${r.html_url})`);
+    } catch (e) {
+      refused.push(`${r.name}（${(e as Error).message.split('\n')[0]}）`);
+    }
+  }
+  if (!done.length) return { line: `${name} 重跑失败：${refused.join('、')}`, ok: false };
+  const partial = refused.length ? `；重跑失败：${refused.join('、')}` : '';
+  return { line: `${name}（${sha}）已重跑失败的 job：${done.join('、')}${busy}${partial}`, ok: !refused.length };
+}
+
+function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashCommand[], comment: string, effects?: Effects, circus = ''): { errors: string[]; reruns: string[] } {
   const errors: string[] = [];
+  const reruns: string[] = [];
   const accepted: string[] = [];
   let writer: boolean | undefined;
   const isWriter = () => (writer ??= ['admin', 'write'].includes(gh.permission(actor)));
@@ -140,13 +197,23 @@ function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashC
         else gh.removeBlockedBy(issue.number, blocker.id);
       }
       promotePreflights(gh, issue.number);
+    } else if (cmd.verb === 'rerun') {
+      if (parentOf(issue.body) === null) {
+        errors.push(`${line}：只能在运行 issue 里重跑它的 PR 的 CI`);
+        continue;
+      }
+      for (const arg of cmd.args) {
+        const { line: result, ok } = rerunPull(gh, issue, arg, circus);
+        if (ok) reruns.push(result);
+        else errors.push(`${line}：${result}`);
+      }
     } else {
       gh.removeAssignees(issue.number, cmd.args);
     }
   }
   if (labels.join('\n') !== current.join('\n')) gh.setLabels(issue.number, labels);
   for (const label of accepted.filter(l => labels.includes(l))) effects?.acceptedLabel(issue.number, label);
-  return errors;
+  return { errors, reruns };
 }
 
 // Bot-set labels an issue should carry, judged from its body.
@@ -395,7 +462,8 @@ function dispatch(event: Event, gh: GitHub, effects?: Effects): number[] {
     case 'issue_comment.created': {
       const commands = parseSlash(event.payload.comment.body);
       if (!commands.length) return [];
-      const errors = applyCommands(gh, gh.getIssue(n), sender.login, commands, event.payload.comment.body, effects);
+      const { errors, reruns } = applyCommands(gh, gh.getIssue(n), sender.login, commands, event.payload.comment.body, effects, event.payload.repository?.full_name ?? '');
+      if (reruns.length) gh.comment(n, [`${who} 已重跑 CI：`, ...reruns.map((r) => `- ${r}`)].join('\n'));
       if (errors.length) gh.comment(n, [`${who} 以下命令有问题，其余已执行：`, ...errors.map((e) => `- ${e}`)].join('\n'));
       else gh.react(event.payload.comment.id, '+1');
       return [n];

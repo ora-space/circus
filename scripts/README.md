@@ -36,6 +36,7 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 /unassign @bob
 /depend #13 #14
 /undepend #14
+/rerun desktop#123
 ```
 
 `/label` 只接受登记表里的 label；`/unlabel` 可以移除任何 label（包括登记表之前留下的旧 label）。由 bot 管理的 label（`run`、`preflight`）两个命令都不能动。bot 全部执行成功时给评论点 👍，有任何一条被拒绝时回复原因，其余照常执行。
@@ -50,8 +51,13 @@ circus 的 issue 是所有 agent 和人共用的数据库。本文是协作规�
 | `/assign` | ✓ | ✓ | ✓ | ✗ |
 | `/unassign` 自己 | ✓ | ✓ | ✓ | ✓ |
 | `/unassign` 别人 | ✓ | ✓ | ✗ | ✗ |
+| `/rerun`（只在运行 issue） | ✓ | ✓ | ✓ | ✗ |
 
 所以：自己开的 issue，label 随便改；别人的 issue，只能评论建议，由作者或 owner 决定。唯一的例外是运行 issue 的 assignee 作为 reviewer 打 review 结论（见下文"review 运行 issue"）。写权限按仓库权限（admin、write）判断，不写死账号。
+
+### 重跑产品仓库的 CI
+
+成员对产品仓库只有读权限，不能重跑 PR 的 CI，由 bot 代劳：在运行 issue 里评论 `/rerun desktop#123`（也可以写 PR 链接，一行可以列多个）。bot 只接受描述里写了 `Refs ora-space/circus#<本运行 issue>` 的未关闭 PR；在 PR 的最新 head 上，每个 workflow 取最近一次 `pull_request` 运行，失败、取消或超时的就重跑其中失败的 job，还在跑的不动，然后回复重跑的链接。没有可重跑的运行时回复原因。重跑只是重放原来的运行，fork PR 依旧拿不到 secret。
 
 ## review 运行 issue
 
@@ -306,7 +312,7 @@ Priority 字段来自 `priority:*`。owner 的 `brief` 已经列出所有人在�
 
 状态切换通知的配置键、默认设置、接收角色与完整转移条件见 [通知设置表](bot/notifications/README.md)，机器可读设置见 [notifications.json](bot/notifications/notifications.json)。通知模块接入后按该表判断必要动作；开启前完成渠道和人员映射验证。
 
-[`.github/workflows/circus.yml`](../.github/workflows/circus.yml) 以 GitHub App 身份运行 `node scripts/cli.ts bot`（App 只授权 circus 仓库，Issues 读写、Metadata 只读（查询仓库权限），以及组织 Projects 读写（同步看板）；ID 在仓库变量 `CIRCUS_APP_ID`，私钥在 secret `CIRCUS_APP_PRIVATE_KEY`）。bot 忽略所有 Bot 账号触发的事件，所以自己的写入不会循环。PR 上的事件不处理。
+[`.github/workflows/circus.yml`](../.github/workflows/circus.yml) 以 GitHub App 身份运行 `node scripts/cli.ts bot`（App 授权 circus 和有 PR CI 的产品仓库 desktop、cloud、marketplace，权限为 Issues 读写、Metadata 只读（查询仓库权限）、组织 Projects 读写（同步看板），以及 Actions 读写、Pull requests 只读（`/rerun`）；ID 在仓库变量 `CIRCUS_APP_ID`，私钥在 secret `CIRCUS_APP_PRIVATE_KEY`）。每次运行生成两个 token：处理事件的只限 circus；新评论时另生成一个只限上述产品仓库、只有 Actions 和 Pull requests 权限的，只用于 `/rerun`。产品仓库新增 PR CI 时，要把它加进 App 的安装范围和 workflow 里的 `repositories`。bot 忽略所有 Bot 账号触发的事件，所以自己的写入不会循环。PR 上的事件不处理。
 
 | 事件 | 处理 |
 |---|---|
@@ -317,7 +323,7 @@ Priority 字段来自 `priority:*`。owner 的 `brief` 已经列出所有人在�
 | issue 关闭 | 正文不以 `## 总结` 开头，或不是作者关闭、总结第一行又没写代关理由，就重新打开并留言；有总结时移除 `status:*` 和 `review:*`、同步看板为 Done，通知依赖它的 issue 并重新同步它们，依赖都已关闭的 issue 下的 `preflight` 换成 `run`；运行 issue 把总结评论到 parent，并重新同步 parent |
 | issue 重新打开 | 同步看板，连同依赖它的 issue（运行 issue 同步它的 parent） |
 | 每天定时 / 在 Actions 页面手动触发 | 遍历所有未关闭的 issue：依赖都已关闭的，把其下未关闭的 `preflight` 换成 `run`（补上事件处理时漏掉的）；再全量同步到看板 |
-| 新评论 | 执行其中的斜杠命令（见权限表和"review 运行 issue"），同步看板；发出者不是作者时查一次仓库权限 |
+| 新评论 | 执行其中的斜杠命令（见权限表、"review 运行 issue"和"重跑产品仓库的 CI"），同步看板；发出者不是作者时查一次仓库权限 |
 
 ## 开发
 
