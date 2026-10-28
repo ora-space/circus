@@ -86,3 +86,10 @@ test('closedForAuthor needs the line first, naming the author, with a reason', (
   assert.ok(!closedForAuthor(`结论\n${line}`, 'bob'));
   assert.ok(!closedForAuthor('由 @owner 代作者 @bob 关闭：', 'bob'));
 });
+
+test('tags are known, and set from the body only on a Labels: line', () => {
+  assert.equal(isKnown('demo'), true);
+  assert.deepEqual(labelsFromBody('做一个 demo 演示\n\nLabels: type:task demo repo:demo'), ['type:task', 'repo:demo', 'demo']);
+  assert.deepEqual(labelsFromBody('做一个 demo 演示'), []);
+  assert.deepEqual(labelsFromBody('```\nLabels: demo\n```'), []);
+});

@@ -27,3 +27,10 @@ test('label --sha names the reviewed commit next to an lgtm', () => {
   assert.throws(() => command.run(['5', '+review:lgtm', '--sha'], ctx), /--sha/);
   assert.equal(calls.length, 1);
 });
+
+test('label --body-file puts the text before the commands, e.g. a screenshot for review', () => {
+  const { ctx, calls } = fakeContext(undefined, { read: (p) => (p === 'shot.md' ? '![首页](https://example.com/a.png)\n' : '') });
+  command.run(['5', '+status:in-review', '--body-file', 'shot.md'], ctx);
+  assert.equal(calls[0].input, '![首页](https://example.com/a.png)\n\n/label status:in-review');
+  assert.throws(() => command.run(['5', '+status:in-review', '--body-file'], ctx), /--body-file/);
+});

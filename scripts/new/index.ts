@@ -1,7 +1,7 @@
 import { parseArgs } from 'node:util';
 import { UsageError, type Command } from '../lib/context.ts';
 import { dependLine, epicLine } from '../lib/deps.ts';
-import { familyOf } from '../lib/labels.ts';
+import { isBodyLabel } from '../lib/labels.ts';
 
 const usage = `new --title T [--label L]... [--depend N]... [--epic N] [--body-file F]
     新建 issue 并输出链接。--label、--depend 写进正文，由 bot 在 issue 打开时打上 label、设为依赖
@@ -42,7 +42,7 @@ export const command: Command = {
     });
     if (!values.title) throw new UsageError(usage);
     for (const l of values.label) {
-      if (!familyOf(l)?.fromBody) throw new UsageError(`new: ${l} 不是可由正文设置的 label`);
+      if (!isBodyLabel(l)) throw new UsageError(`new: ${l} 不是可由正文设置的 label`);
     }
     const depends = values.depend.map(issueRef);
     const epic = values.epic === undefined ? undefined : issueRef(values.epic);

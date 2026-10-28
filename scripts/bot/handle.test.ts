@@ -675,3 +675,58 @@ test('/rerun refuses PRs that do not reference the run, and reports why nothing 
     assert.match(f.log.at(-1)!, error);
   }
 });
+
+test('demo: a run of a demo issue is labelled demo, other runs are not', () => {
+  const f = fakeGitHub({ labels: [{ name: 'demo' }], assignees: [{ login: 'bob' }] });
+  opened(f, f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1' }));
+  assert.equal(f.log[0], '#2 labels run demo');
+
+  const g = fakeGitHub({ assignees: [{ login: 'bob' }] });
+  opened(g, g.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1' }));
+  assert.equal(g.log[0], '#2 labels run');
+});
+
+test('demo: an issue opened under a demo epic is labelled demo', () => {
+  const f = fakeGitHub({ labels: [{ name: 'demo' }] });
+  const item = f.add({ number: 2, body: '总事项：#1\n\nLabels: type:task' });
+  handle({ name: 'issues', payload: { action: 'opened', issue: item, sender: user('alice') } }, f.gh);
+  assert.deepEqual(f.log, ['#2 labels type:task demo']);
+});
+
+test('demo: labelling the parent demo or not carries over to its open runs', () => {
+  const f = fakeGitHub();
+  f.add({ number: 2, body: 'Parent: #1', labels: [{ name: 'run' }] });
+  f.add({ number: 3, body: 'Parent: #1', labels: [{ name: 'run' }], state: 'closed' });
+  commentEvent(f, 'alice', '/label demo');
+  assert.deepEqual(f.log, ['labels demo', '#2 labels run demo', 'react 42 +1']);
+  commentEvent(f, 'alice', '/unlabel demo');
+  assert.deepEqual(f.log.slice(3), ['labels ', '#2 labels run', 'react 42 +1']);
+});
+
+test('demo: a demo run goes to review only with a screenshot in the same comment', () => {
+  const run = () => fakeGitHub({ body: 'Parent: #9', labels: [{ name: 'run' }, { name: 'demo' }] });
+  const f = run();
+  commentEvent(f, 'alice', '/label status:in-review');
+  assert.match(f.log.at(-1)!, /demo 运行送审要在同一条评论里附界面截图/);
+  assert.equal(f.log.filter((l) => l.startsWith('labels')).length, 0);
+
+  for (const shot of ['![首页](https://raw.githubusercontent.com/bob/demo/abc/home.png)', '<img width="800" alt="home" src="https://github.com/user-attachments/assets/1">']) {
+    const g = run();
+    commentEvent(g, 'alice', `${shot}\n/label status:in-review`);
+    assert.deepEqual(g.log, ['labels run demo status:in-review', 'react 42 +1']);
+  }
+  const h = run();
+  commentEvent(h, 'alice', '`![x](https://a/b.png)`\n/label status:in-review');
+  assert.match(h.log.at(-1)!, /附界面截图/);
+
+  const plain = fakeGitHub({ body: 'Parent: #9', labels: [{ name: 'run' }] });
+  commentEvent(plain, 'alice', '/label status:in-review');
+  assert.deepEqual(plain.log, ['labels run status:in-review', 'react 42 +1']);
+});
+
+test('demo: a demo run opened as in-review without a screenshot is not', () => {
+  const f = fakeGitHub({ labels: [{ name: 'demo' }], assignees: [{ login: 'bob' }] });
+  opened(f, f.add({ number: 2, user: { login: 'bob' }, body: 'Parent: #1\n\nstatus:in-review' }));
+  assert.match(f.log[0], /没有打上 `status:in-review`/);
+  assert.equal(f.log[1], '#2 labels run demo');
+});

@@ -65,7 +65,7 @@ export const FAMILIES: readonly LabelFamily[] = [
   },
   {
     prefix: 'repo',
-    values: ['desktop', 'specs', 'cluster', 'cloud', 'sandbox', 'marketplace'],
+    values: ['desktop', 'specs', 'cluster', 'cloud', 'sandbox', 'marketplace', 'demo'],
     description: '事项落在哪个 ora-space 仓库',
     color: 'c5def5',
     exclusive: false,
@@ -81,6 +81,15 @@ export const BOT_LABELS = [
 
 export const isBotLabel = (label: string) => BOT_LABELS.some((l) => l.name === label);
 
+// Labels without a value that people set like registered ones. A bare word is too common in
+// prose to match anywhere in a body, so the body sets a tag only on a `Labels:` line.
+export const TAGS = [
+  { name: 'demo', description: '临时 demo 开发（ora-space/demo）：运行 issue 随 parent 继承；不走 specs 流程；送审要附界面截图', color: 'f9d0c4' },
+] as const;
+
+export const DEMO = 'demo';
+export const isTag = (label: string) => TAGS.some((t) => t.name === label);
+
 export function familyOf(label: string, families = FAMILIES): LabelFamily | undefined {
   const i = label.indexOf(':');
   if (i < 0) return undefined;
@@ -88,17 +97,21 @@ export function familyOf(label: string, families = FAMILIES): LabelFamily | unde
   return f && f.values.includes(label.slice(i + 1)) ? f : undefined;
 }
 
-export const isKnown = (label: string, families = FAMILIES) => familyOf(label, families) !== undefined;
+export const isKnown = (label: string, families = FAMILIES) => familyOf(label, families) !== undefined || isTag(label);
+
+// Whether `<label>` written in the body is set when the issue opens.
+export const isBodyLabel = (label: string, families = FAMILIES) => isTag(label) || familyOf(label, families)?.fromBody === true;
 
 export function allLabels(families = FAMILIES): { name: string; description: string; color: string }[] {
   return [
     ...families.flatMap((f) => f.values.map((v) => ({ name: `${f.prefix}:${v}`, description: f.descriptions?.[v] ?? f.description, color: f.color }))),
     ...BOT_LABELS,
+    ...TAGS,
   ];
 }
 
-// Registered labels of body-settable families written in the body's prose,
-// in order of appearance; an exclusive family keeps its first match.
+// Registered labels of body-settable families written in the body's prose, in order of
+// appearance, then tags on `Labels:` lines; an exclusive family keeps its first match.
 export function labelsFromBody(body: string | null | undefined, families = FAMILIES): string[] {
   const text = prose(body);
   const found: string[] = [];
@@ -108,6 +121,9 @@ export function labelsFromBody(body: string | null | undefined, families = FAMIL
     if (!f || !f.fromBody || found.includes(label)) continue;
     if (f.exclusive && found.some((l) => familyOf(l, families) === f)) continue;
     found.push(label);
+  }
+  for (const m of text.matchAll(/^\s*labels\s*[:：]([^\n]*)$/gim)) {
+    for (const word of m[1].split(/\s+/)) if (isTag(word) && !found.includes(word)) found.push(word);
   }
   return found;
 }
