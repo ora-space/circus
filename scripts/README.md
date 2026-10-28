@@ -250,6 +250,7 @@ circus/
 `ora-space/demo` 是为演示临时开发的小型 demo，和其余 ora-space 开发互不干扰。demo 相关的事项都挂 `demo` label，用 `repo:demo` 标明仓库：
 
 - **label**：开 issue 时 `node scripts/cli.ts new --label demo --label repo:demo ...`（正文里 `demo` 只在 `Labels:` 行上才算），之后用 `/label demo`。运行 issue 不用自己打：bot 打开运行 issue 时从 parent 继承 `demo`；parent 后来 `/label demo` 或 `/unlabel demo`，bot 同步到它未关闭的运行 issue。正文写了"总事项：#N"、#N 挂着 `demo` 的 issue，打开时 bot 同样打上 `demo`。
+- **标题**：demo 事项的标题一律写成 `[demo] xxxx`，运行 issue 写成 `运行：[demo] xxxx`。`run` 默认取"运行：<parent 标题>"，parent 标题带上前缀就自动符合；用 `run --title` 自拟标题，或关闭时用 `close --title` 改成结果标题，都要保留这个格式。
 - **范围**：demo 只改 `ora-space/demo`。需要改 cloud、desktop 等产品仓库的，不放在 demo 事项下，按正常流程另开 issue。
 - **不走 specs 流程**：不做 [specs 根决策门禁](../memory/rules/specs-root-decision-gate.md)，不写 ADR，不分三个运行；PR 描述写"demo，不涉及 specs"代替 ADR 状态。其余照旧：运行 issue、worktree、`Refs ora-space/circus#<运行 issue>`、PR 只装交付物、review 和合并。
 - **送审附截图**：demo 运行打 `status:in-review` 时，同一条评论里必须附上界面截图，否则 bot 拒绝；push 新 commit 后重新送审，也要附上新 commit 的截图。reviewer 和 owner 对照截图检视，`review:lgtm` 照旧写明审过的 commit。截图写成 Markdown 图片（`![说明](https://...)`）或网页拖拽上传生成的图片：

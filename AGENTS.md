@@ -60,7 +60,7 @@ circus 是 owner 驱动 [ora-space](https://github.com/ora-space) 项目开发�
 - 记忆和协议只能经 PR 改，PR 开在 `ora-space/circus`（从 fork 提时 `gh pr create -R ora-space/circus --head <login>:<branch>`），合并由 owner 决定。
 - Ora 产品仓库只承载代码和 PR，不在那里开 issue 或展开讨论；产品仓库里已有的 issue 转为 circus issue（正文链接原 issue），后续讨论在 circus。用户已经说清楚要做的事可以直接开 PR（PR 由 owner 审），其余写入先得到用户同意。
 - 在产品仓库工作时，用户没有另外指明就按 [开发产品仓库](scripts/README.md#开发产品仓库)：fork clone 在 `ora-space/<repo>`，每项开发用 `node scripts/cli.ts worktree` 基于最新 upstream main 建 worktree。先遵守该仓库的 `AGENTS.md` / `CLAUDE.md`；feature 和 refactor 先按 [specs 根决策门禁](memory/rules/specs-root-decision-gate.md) 检查（`ora-space/demo` 除外，见 [demo](scripts/README.md#demo)）；commit 按 [commit 拆分偏好](memory/preferences/pr-commit-split.md)。
-- 产品仓库的 PR 只装[交付物](scripts/README.md#开发产品仓库)，开 PR 前逐个核对改动文件；开发过程记录写在运行 issue 里。挂 `demo` 的事项按 [demo](scripts/README.md#demo)：只改 `ora-space/demo`、不走 specs 流程、送审附界面截图。其余 PR 描述写明它实现的 ADR 状态；task 要改 specs 时按[三个运行](scripts/README.md#开发产品仓库)推进：ADR 评审到 `approved`、产品 PR、ADR 改为 `implemented` 各一个运行。
+- 产品仓库的 PR 只装[交付物](scripts/README.md#开发产品仓库)，开 PR 前逐个核对改动文件；开发过程记录写在运行 issue 里。挂 `demo` 的事项按 [demo](scripts/README.md#demo)：标题写成 `[demo] xxxx`（运行 issue 是 `运行：[demo] xxxx`）、只改 `ora-space/demo`、不走 specs 流程、送审附界面截图。其余 PR 描述写明它实现的 ADR 状态；task 要改 specs 时按[三个运行](scripts/README.md#开发产品仓库)推进：ADR 评审到 `approved`、产品 PR、ADR 改为 `implemented` 各一个运行。
 - 产品仓库多为公开仓库：每个 PR 都关联运行 issue，不直接关联普通 issue：PR 描述用 `Refs ora-space/circus#<运行 issue>`，但不把 circus 里的讨论和记忆内容复制过去。PR 链接评论到运行 issue。
 - 进度和讨论只存在 issue 里；记忆和协议文件里不写进度、TODO 或状态。
 
