@@ -10,7 +10,7 @@
 //   - refuses runs of decisions, makes runs of issues waiting on a decision preflights, and
 //     turns preflights into runs once their parent has no open dependencies,
 //   - lets others review runs awaiting review (review:lgtm, status:needs-author),
-//   - keeps demo work labelled demo: runs and sub-items inherit it, and a demo run goes to
+//   - keeps v2 work labelled v2: runs and sub-items inherit it, and a v2 run goes to
 //     review only with a screenshot of the UI in the same comment,
 //   - re-runs the failed CI of a run's product PR for members, who cannot re-run it themselves,
 //   - drops status and review labels on close and mirrors issues onto the board (see lib/board.ts);
@@ -19,7 +19,7 @@
 import type { GitHub, Issue, WorkflowRun } from './github.ts';
 import { boardValues, type Board } from '../lib/board.ts';
 import { dependsFromBody, epicOf } from '../lib/deps.ts';
-import { applyLabels, DEMO, isBotLabel, isKnown, labelsFromBody } from '../lib/labels.ts';
+import { applyLabels, V2, isBotLabel, isKnown, labelsFromBody } from '../lib/labels.ts';
 import { prose } from '../lib/markdown.ts';
 import { isPreflightBody, parentOf, PREFLIGHT_LABEL, RUN_LABEL, runKind } from '../lib/run.ts';
 import { parseSlash, type SlashCommand } from '../lib/slash.ts';
@@ -80,7 +80,7 @@ const REVIEWER_LABELS = { label: [LGTM, NEEDS_AUTHOR], unlabel: [LGTM] };
 export const hasScreenshot = (text: string | null | undefined) =>
   /!\[[^\]]*\]\(\s*<?https?:\/\/|<img\b[^>]*\bsrc\s*=\s*["']?https?:\/\//i.test(prose(text));
 
-const SCREENSHOT_RULE = `demo 运行送审要在同一条评论里附界面截图（Markdown 图片或网页上传的图片）`;
+const SCREENSHOT_RULE = `v2 运行送审要在同一条评论里附界面截图（Markdown 图片或网页上传的图片）`;
 
 // A commit SHA (7–40 hex digits, at least one digit) says which revision an lgtm approved.
 const COMMIT_SHA = /(?<![\w])(?=[a-f]*\d)[0-9a-f]{7,40}(?![\w])/;
@@ -93,7 +93,7 @@ function reviewRule(label: string, actor: string, issue: Issue, labels: string[]
     if (!labels.includes(IN_REVIEW)) return `只能在 ${IN_REVIEW} 时打 ${LGTM}`;
     if (!COMMIT_SHA.test(comment)) return `评论里要写明审过的 commit SHA`;
   }
-  if (label === IN_REVIEW && parentOf(issue.body) !== null && labels.includes(DEMO) && !hasScreenshot(comment)) return SCREENSHOT_RULE;
+  if (label === IN_REVIEW && parentOf(issue.body) !== null && labels.includes(V2) && !hasScreenshot(comment)) return SCREENSHOT_RULE;
   if (label === NEEDS_AUTHOR && actor !== issue.user.login && !isWriter() && !labels.includes(IN_REVIEW)) {
     return `reviewer 只能在 ${IN_REVIEW} 时打 ${NEEDS_AUTHOR}`;
   }
@@ -222,17 +222,17 @@ function applyCommands(gh: GitHub, issue: Issue, actor: string, commands: SlashC
     }
   }
   if (labels.join('\n') !== current.join('\n')) gh.setLabels(issue.number, labels);
-  if (labels.includes(DEMO) !== current.includes(DEMO) && parentOf(issue.body) === null) syncDemo(gh, issue.number, labels.includes(DEMO));
+  if (labels.includes(V2) !== current.includes(V2) && parentOf(issue.body) === null) syncV2(gh, issue.number, labels.includes(V2));
   for (const label of accepted.filter(l => labels.includes(l))) effects?.acceptedLabel(issue.number, label);
   return { errors, reruns };
 }
 
-// A parent's open runs carry demo exactly when the parent does.
-function syncDemo(gh: GitHub, parent: number, demo: boolean): void {
+// A parent's open runs carry v2 exactly when the parent does.
+function syncV2(gh: GitHub, parent: number, v2: boolean): void {
   for (const run of gh.subIssues(parent).filter((i) => i.state === 'open' && parentOf(i.body) === parent)) {
     const current = names(run);
-    if (current.includes(DEMO) === demo) continue;
-    gh.setLabels(run.number, demo ? [...current, DEMO] : current.filter((l) => l !== DEMO));
+    if (current.includes(V2) === v2) continue;
+    gh.setLabels(run.number, v2 ? [...current, V2] : current.filter((l) => l !== V2));
   }
 }
 
@@ -291,8 +291,8 @@ function openRun(gh: GitHub, run: Issue, parent: number): number | null {
   const waiting = openRefs(blockers);
   const preflight = kind.label === PREFLIGHT_LABEL;
   const current = names(gh.getIssue(run.number));
-  let next = applyLabels(current, [...labelsFromBody(run.body), kind.label, ...(names(item).includes(DEMO) ? [DEMO] : [])], []);
-  if (next.includes(DEMO) && next.includes(IN_REVIEW) && !hasScreenshot(run.body)) {
+  let next = applyLabels(current, [...labelsFromBody(run.body), kind.label, ...(names(item).includes(V2) ? [V2] : [])], []);
+  if (next.includes(V2) && next.includes(IN_REVIEW) && !hasScreenshot(run.body)) {
     next = next.filter((l) => l !== IN_REVIEW);
     gh.comment(run.number, `没有打上 \`${IN_REVIEW}\`：${SCREENSHOT_RULE}。`);
   }
@@ -410,9 +410,9 @@ function dispatch(event: Event, gh: GitHub, effects?: Effects): number[] {
       if (failed.length) gh.comment(n, [`正文里的依赖有问题：`, ...failed.map((e) => `- ${e}`), '', '用 `/depend #N` 补上。'].join('\n'));
       const wanted = labelsFromBody(issue.body);
       const epic = epicOf(issue.body);
-      if (epic !== null && !wanted.includes(DEMO)) {
+      if (epic !== null && !wanted.includes(V2)) {
         try {
-          if (names(gh.getIssue(epic)).includes(DEMO)) wanted.push(DEMO);
+          if (names(gh.getIssue(epic)).includes(V2)) wanted.push(V2);
         } catch {
           // A missing epic only matters to brief.
         }

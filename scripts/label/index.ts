@@ -6,7 +6,7 @@ const usage = `label N [+]L... -L... [--sha COMMIT] [--body-file F]
     在 #N 评论 /label、/unlabel，由 bot 修改 label。issue 作者和有写权限的人可以改任何 label；
     别人的运行 issue 在 status:in-review 时，任何人都可以 review：+review:lgtm（要带 --sha 写明审过的 commit）、
     +status:needs-author、-review:lgtm。--body-file 的内容（UTF-8，- 为 stdin）写在同一条评论里命令之前：
-    demo 运行打 +status:in-review 时，用它附上界面截图。`;
+    v2 运行打 +status:in-review 时，用它附上界面截图。`;
 
 export const command: Command = {
   usage,

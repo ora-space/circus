@@ -65,7 +65,7 @@ export const FAMILIES: readonly LabelFamily[] = [
   },
   {
     prefix: 'repo',
-    values: ['desktop', 'specs', 'cluster', 'cloud', 'sandbox', 'marketplace', 'demo'],
+    values: ['desktop', 'specs', 'cluster', 'cloud', 'sandbox', 'marketplace'],
     description: '事项落在哪个 ora-space 仓库',
     color: 'c5def5',
     exclusive: false,
@@ -84,10 +84,10 @@ export const isBotLabel = (label: string) => BOT_LABELS.some((l) => l.name === l
 // Labels without a value that people set like registered ones. A bare word is too common in
 // prose to match anywhere in a body, so the body sets a tag only on a `Labels:` line.
 export const TAGS = [
-  { name: 'demo', description: '临时 demo 开发（ora-space/demo）：运行 issue 随 parent 继承；不走 specs 流程；送审要附界面截图', color: 'f9d0c4' },
+  { name: 'v2', description: 'cloud v2：正式 v2 前端与临时单体后端；运行 issue 随 parent 继承；不走 specs 流程；送审要附界面截图', color: 'f9d0c4' },
 ] as const;
 
-export const DEMO = 'demo';
+export const V2 = 'v2';
 export const isTag = (label: string) => TAGS.some((t) => t.name === label);
 
 export function familyOf(label: string, families = FAMILIES): LabelFamily | undefined {

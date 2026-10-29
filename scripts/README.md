@@ -245,17 +245,18 @@ circus/
 
 不在 `ora-space/<repo>` 的主目录里开发：它只停在 main，作为 worktree 的母库。
 
-### demo
+### v2
 
-`ora-space/demo` 是为演示临时开发的小型 demo，和其余 ora-space 开发互不干扰。demo 相关的事项都挂 `demo` label，用 `repo:demo` 标明仓库：
+cloud v2 包括正式的 v2 前端和一个临时的单体后端，用于尽快演示，同时缩短端到端验证的耗时。v2 和其余 ora-space 开发互不干扰。v2 相关的事项都挂 `v2` label：
 
-- **label**：开 issue 时 `node scripts/cli.ts new --label demo --label repo:demo ...`（正文里 `demo` 只在 `Labels:` 行上才算），之后用 `/label demo`。运行 issue 不用自己打：bot 打开运行 issue 时从 parent 继承 `demo`；parent 后来 `/label demo` 或 `/unlabel demo`，bot 同步到它未关闭的运行 issue。正文写了"总事项：#N"、#N 挂着 `demo` 的 issue，打开时 bot 同样打上 `demo`。
-- **标题**：demo 事项的标题一律写成 `[demo] xxxx`，运行 issue 写成 `运行：[demo] xxxx`。`run` 默认取"运行：<parent 标题>"，parent 标题带上前缀就自动符合；用 `run --title` 自拟标题，或关闭时用 `close --title` 改成结果标题，都要保留这个格式。
-- **范围**：demo 只改 `ora-space/demo`。需要改 cloud、desktop 等产品仓库的，不放在 demo 事项下，按正常流程另开 issue。
-- **不走 specs 流程**：不做 [specs 根决策门禁](../memory/rules/specs-root-decision-gate.md)，不写 ADR，不分三个运行；PR 描述写"demo，不涉及 specs"代替 ADR 状态。其余照旧：运行 issue、worktree、`Refs ora-space/circus#<运行 issue>`、PR 只装交付物、review 和合并。
-- **送审附截图**：demo 运行打 `status:in-review` 时，同一条评论里必须附上界面截图，否则 bot 拒绝；push 新 commit 后重新送审，也要附上新 commit 的截图。reviewer 和 owner 对照截图检视，`review:lgtm` 照旧写明审过的 commit。截图写成 Markdown 图片（`![说明](https://...)`）或网页拖拽上传生成的图片：
+- **代码**：都在 `ora-space/cloud` 的独立目录里。`frontend-v2/` 是正式的 v2 前端；`cmd/v2-server/` 和 `internal/v2server/` 是临时单体后端，以后会被正式 Cloud 取代。v2 事项只改这些目录，以及让它们独立构建和检查所需的 CI 与 Taskfile 入口。现有 Cloud、`frontend/` 和其他仓库的改动不放在 v2 事项下，按正常流程另开 issue。
+- **接口**：临时后端实现 cloud `api/openapi.json` 中 v2 用到的子集，v2 前端用生成的客户端，以后切换到正式 Cloud 时前端基本不用改。契约里缺的接口先在临时后端补上，并在事项里记下，作为正式 Cloud 以后要补的契约。
+- **label**：开 issue 时用 `node scripts/cli.ts new --label v2 --label repo:cloud ...`（正文里的 `v2` 只在 `Labels:` 行上才算），之后用 `/label v2`。运行 issue 不用自己打：bot 打开运行 issue 时从 parent 继承 `v2`；parent 之后 `/label v2` 或 `/unlabel v2`，bot 同步到它未关闭的运行 issue。正文写了"总事项：#N"、而 #N 挂着 `v2` 的 issue，打开时 bot 同样打上 `v2`。
+- **标题**：v2 事项的标题一律写成 `[v2] xxxx`，运行 issue 写成 `运行：[v2] xxxx`。`run` 默认取"运行：<parent 标题>"，parent 标题带上前缀就自动符合；用 `run --title` 自拟标题，或关闭时用 `close --title` 改成结果标题，都要保留这个格式。
+- **不走 specs 流程**：不做 [specs 根决策门禁](../memory/rules/specs-root-decision-gate.md)，不写 ADR，不分三个运行，不登记核心用例证据；PR 描述写"v2，不涉及 specs"代替 ADR 状态。其余照旧：运行 issue、worktree、`Refs ora-space/circus#<运行 issue>`、PR 只装交付物、review 和合并。
+- **送审附截图**：v2 运行打 `status:in-review` 时，同一条评论里必须附上界面截图，否则 bot 拒绝；push 新 commit 后重新送审，也要附上新 commit 的截图。纯后端改动截一张用到它的界面。reviewer 和 owner 对照截图检视，`review:lgtm` 照旧写明审过的 commit。截图写成 Markdown 图片（`![说明](https://...)`）或网页拖拽上传生成的图片：
   - 人在网页上拖拽上传，同一条评论写上 `/label status:in-review`；
-  - agent 无法经 API 上传图片：把截图提交到自己 fork 上的独立分支（如 `screenshots/<运行 issue>`，不进 PR），用 `https://raw.githubusercontent.com/<login>/demo/<commit>/<文件>` 引用，再 `node scripts/cli.ts label <运行 issue> +status:in-review --body-file <写了图片的文件>`。
+  - agent 无法经 API 上传图片：把截图提交到自己 fork 上的独立分支（如 `screenshots/<运行 issue>`，不进 PR），用 `https://raw.githubusercontent.com/<login>/cloud/<commit>/<文件>` 引用，再 `node scripts/cli.ts label <运行 issue> +status:in-review --body-file <写了图片的文件>`。
 
 ## Label 登记表
 
@@ -269,8 +270,8 @@ circus/
 | `status:needs-author` | owner 或 reviewer 已回复、决定或提出要求，等作者跟进 | ✓ | ✓ |
 | `review:lgtm` | 别人审过运行 issue 的 PR，认为可以合并（见"review 运行 issue"）；作者重新打 `status:in-review` 或有人打 `status:needs-author` 时清除 | ✗ | ✓ |
 | `priority:p0`–`p3` | 优先级：立即、高、中、低；不设就是没有优先级 | ✓ | ✓ |
-| `repo:<name>` | 事项落在哪个 ora-space 仓库：desktop、specs、cluster、cloud、sandbox、marketplace、demo；跨仓库可打多个 | ✓ | ✗ |
-| `demo` | 临时 demo 开发（见"[demo](#demo)"）：运行 issue 随 parent 继承，不走 specs 流程，送审要附界面截图 | 只在 `Labels:` 行 | ✗ |
+| `repo:<name>` | 事项落在哪个 ora-space 仓库：desktop、specs、cluster、cloud、sandbox、marketplace；跨仓库可打多个 | ✓ | ✗ |
+| `v2` | cloud v2 的正式前端与临时后端（见"[v2](#v2)"）：运行 issue 随 parent 继承，不走 specs 流程，送审要附界面截图 | 只在 `Labels:` 行 | ✗ |
 | `run` | 运行 issue（正文首行 `Parent: #N`）。由 bot 管理：只在打开运行 issue 时由 bot 打上，命令不能增删 | ✗ | 与 `preflight` 互斥 |
 | `preflight` | parent 依赖未完成时先做的运行 issue（正文首行 `Parent: #N (preflight)`）。由 bot 管理：打开时打上，parent 的依赖都关闭后换成 `run` | ✗ | 与 `run` 互斥 |
 
@@ -296,7 +297,7 @@ circus/
 | `run N [--preflight] [--title T] [--body-file F]` | 为 #N 开运行 issue；`--preflight` 在 #N 依赖未完成时先做。#N 是 `type:decision` 时拒绝，#N 依赖未关闭的决策时必须加 `--preflight` |
 | `updates N [--all]` | 你上次发言之后的动静：别人的评论、斜杠命令、status 轨迹、引用的 PR、关闭和重新打开、有更新的运行 issue |
 | `show N` | 完整输出 issue 和全部评论 |
-| `label N [+]L... -L... [--sha C] [--body-file F]` | 评论 `/label`、`/unlabel`；`--sha` 在评论里写明审过的 commit，打 `review:lgtm` 时要带；`--body-file` 的内容写在同一条评论里，demo 运行送审时用它附截图 |
+| `label N [+]L... -L... [--sha C] [--body-file F]` | 评论 `/label`、`/unlabel`；`--sha` 在评论里写明审过的 commit，打 `review:lgtm` 时要带；`--body-file` 的内容写在同一条评论里，v2 运行送审时用它附截图 |
 | `assign N [+]@U... -@U...` | 评论 `/assign`、`/unassign` |
 | `depend N [+]#M... -#M...` | 评论 `/depend`、`/undepend` |
 | `rerun N <repo>#<PR>...` | 在运行 issue 评论 `/rerun`，由 bot 重跑 PR 上失败的 CI（见"重跑产品仓库的 CI"） |
@@ -331,14 +332,14 @@ Priority 字段来自 `priority:*`。owner 的 `brief` 已经列出所有人在�
 
 | 事件 | 处理 |
 |---|---|
-| issue 打开 | 打上正文里写的 label、设上 `依赖：` 行里的依赖，总事项挂着 `demo` 时打上 `demo`，同步看板；运行 issue 另打 `run`，parent 挂着 `demo` 时也打 `demo`（parent 依赖未关闭的决策，或有未完成的依赖且首行标了 `(preflight)` 时打 `preflight`；parent 是 `type:decision` 时只留言、不打 label 不挂子 issue）、挂为 parent 的子 issue、作者不在 parent 的 assignee 里时补上，parent 还有未完成的依赖时提醒 |
+| issue 打开 | 打上正文里写的 label、设上 `依赖：` 行里的依赖，总事项挂着 `v2` 时打上 `v2`，同步看板；运行 issue 另打 `run`，parent 挂着 `v2` 时也打 `v2`（parent 依赖未关闭的决策，或有未完成的依赖且首行标了 `(preflight)` 时打 `preflight`；parent 是 `type:decision` 时只留言、不打 label 不挂子 issue）、挂为 parent 的子 issue、作者不在 parent 的 assignee 里时补上，parent 还有未完成的依赖时提醒 |
 | 手动打上 label | 撤销并留言；打开后一分钟内、且正文里写了的 label 除外（`gh issue create --label` 产生的事件），运行 issue 上与首行相符的 `run` 或 `preflight` 除外 |
 | 手动移除 label | 恢复并留言 |
 | 手动 assign / unassign | 撤销并留言 |
 | issue 关闭 | 正文不以 `## 总结` 开头，或不是作者关闭、总结第一行又没写代关理由，就重新打开并留言；有总结时移除 `status:*` 和 `review:*`、同步看板为 Done，通知依赖它的 issue 并重新同步它们，依赖都已关闭的 issue 下的 `preflight` 换成 `run`；运行 issue 把总结评论到 parent，并重新同步 parent |
 | issue 重新打开 | 同步看板，连同依赖它的 issue（运行 issue 同步它的 parent） |
 | 每天定时 / 在 Actions 页面手动触发 | 遍历所有未关闭的 issue：依赖都已关闭的，把其下未关闭的 `preflight` 换成 `run`（补上事件处理时漏掉的）；再全量同步到看板 |
-| 新评论 | 执行其中的斜杠命令（见权限表、"review 运行 issue"和"重跑产品仓库的 CI"）：parent 增删 `demo` 时同步到它未关闭的运行 issue，demo 运行打 `status:in-review` 时检查同一条评论里有没有截图；同步看板；发出者不是作者时查一次仓库权限 |
+| 新评论 | 执行其中的斜杠命令（见权限表、"review 运行 issue"和"重跑产品仓库的 CI"）：parent 增删 `v2` 时同步到它未关闭的运行 issue，v2 运行打 `status:in-review` 时检查同一条评论里有没有截图；同步看板；发出者不是作者时查一次仓库权限 |
 
 ## 开发
 

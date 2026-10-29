@@ -88,8 +88,8 @@ test('closedForAuthor needs the line first, naming the author, with a reason', (
 });
 
 test('tags are known, and set from the body only on a Labels: line', () => {
-  assert.equal(isKnown('demo'), true);
-  assert.deepEqual(labelsFromBody('做一个 demo 演示\n\nLabels: type:task demo repo:demo'), ['type:task', 'repo:demo', 'demo']);
-  assert.deepEqual(labelsFromBody('做一个 demo 演示'), []);
-  assert.deepEqual(labelsFromBody('```\nLabels: demo\n```'), []);
+  assert.equal(isKnown('v2'), true);
+  assert.deepEqual(labelsFromBody('做一个 v2 演示\n\nLabels: type:task v2 repo:cloud'), ['type:task', 'repo:cloud', 'v2']);
+  assert.deepEqual(labelsFromBody('做一个 v2 演示'), []);
+  assert.deepEqual(labelsFromBody('```\nLabels: v2\n```'), []);
 });
