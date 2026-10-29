@@ -249,7 +249,7 @@ circus/
 
 cloud v2 包括正式的 v2 前端和一个临时的单体后端，用于尽快演示，同时缩短端到端验证的耗时。v2 和其余 ora-space 开发互不干扰。v2 相关的事项都挂 `v2` label：
 
-- **代码**：都在 `ora-space/cloud` 的独立目录里。`frontend-v2/` 是正式的 v2 前端；`cmd/v2-server/` 和 `internal/v2server/` 是临时单体后端，以后会被正式 Cloud 取代。v2 事项只改这些目录，以及让它们独立构建和检查所需的 CI 与 Taskfile 入口。现有 Cloud、`frontend/` 和其他仓库的改动不放在 v2 事项下，按正常流程另开 issue。
+- **代码**：都在 `ora-space/cloud` 的独立目录里。`frontend-v2/` 是正式的 v2 前端；`v2-server/` 是临时单体后端，一个独立的 Go 模块，以后会被正式 Cloud 取代。v2 事项只改这些目录，以及让它们独立构建和检查所需的 CI 与 Taskfile 入口。现有 Cloud、`frontend/` 和其他仓库的改动不放在 v2 事项下，按正常流程另开 issue。
 - **接口**：临时后端实现 cloud `api/openapi.json` 中 v2 用到的子集，v2 前端用生成的客户端，以后切换到正式 Cloud 时前端基本不用改。契约里缺的接口先在临时后端补上，并在事项里记下，作为正式 Cloud 以后要补的契约。
 - **label**：开 issue 时用 `node scripts/cli.ts new --label v2 --label repo:cloud ...`（正文里的 `v2` 只在 `Labels:` 行上才算），之后用 `/label v2`。运行 issue 不用自己打：bot 打开运行 issue 时从 parent 继承 `v2`；parent 之后 `/label v2` 或 `/unlabel v2`，bot 同步到它未关闭的运行 issue。正文写了"总事项：#N"、而 #N 挂着 `v2` 的 issue，打开时 bot 同样打上 `v2`。
 - **标题**：v2 事项的标题一律写成 `[v2] xxxx`，运行 issue 写成 `运行：[v2] xxxx`。`run` 默认取"运行：<parent 标题>"，parent 标题带上前缀就自动符合；用 `run --title` 自拟标题，或关闭时用 `close --title` 改成结果标题，都要保留这个格式。
