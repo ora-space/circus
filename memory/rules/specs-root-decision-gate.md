@@ -11,6 +11,6 @@ scope: ora-space
 
 本规则只针对"没有任何根决策"的模块；已有根决策但是否足以支撑当前工作，结合具体任务和现有 specs 分析。
 
-例外：`ora-space/demo` 是临时演示用的 demo，不走 specs 流程，不做本检查（见 [`scripts/README.md`](../../scripts/README.md#demo)）。
+例外：cloud v2（`frontend-v2/` 与临时单体后端）不走 specs 流程，不做本检查（见 [`scripts/README.md`](../../scripts/README.md#v2)）。
 
 背景：specs 机制是项目中途引入的，各模块的根决策仍在逐步补齐。
