@@ -54,6 +54,19 @@ export const FAMILIES: readonly LabelFamily[] = [
     fromBody: true,
   },
   {
+    prefix: 'phase',
+    values: ['1', '2', '3'],
+    description: '事项属于 Ora 的哪个阶段',
+    descriptions: {
+      '1': 'v2 演示：功能覆盖演示场景',
+      '2': 'desktop 与 cloud 协调：走正常 specs 流程',
+      '3': '真实多租户云端集群：正式 Cloud 简化并对齐 v2-server API',
+    },
+    color: 'bfd4f2',
+    exclusive: true,
+    fromBody: true,
+  },
+  {
     // Not settable from the body: an author must not approve their own run.
     prefix: 'review',
     values: ['lgtm'],
@@ -84,7 +97,7 @@ export const isBotLabel = (label: string) => BOT_LABELS.some((l) => l.name === l
 // Labels without a value that people set like registered ones. A bare word is too common in
 // prose to match anywhere in a body, so the body sets a tag only on a `Labels:` line.
 export const TAGS = [
-  { name: 'v2', description: 'cloud v2：正式 v2 前端与临时单体后端；运行 issue 随 parent 继承；不走 specs 流程；送审要附界面截图', color: 'f9d0c4' },
+  { name: 'v2', description: 'cloud v2：正式 v2 前端与 v2-server（API 基准）；运行 issue 随 parent 继承；不走 specs 流程；送审要附界面截图', color: 'f9d0c4' },
 ] as const;
 
 export const V2 = 'v2';

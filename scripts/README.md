@@ -247,16 +247,30 @@ circus/
 
 ### v2
 
-cloud v2 包括正式的 v2 前端和一个临时的单体后端，用于尽快演示，同时缩短端到端验证的耗时。v2 和其余 ora-space 开发互不干扰。v2 相关的事项都挂 `v2` label：
+cloud v2 包括正式的 v2 前端和单体后端 v2-server，用于尽快演示，同时缩短端到端验证的耗时。v2 和其余 ora-space 开发互不干扰。v2 相关的事项都挂 `v2` label：
 
-- **代码**：都在 `ora-space/cloud` 的独立目录里。`frontend-v2/` 是正式的 v2 前端；`v2-server/` 是临时单体后端，一个独立的 Go 模块，以后会被正式 Cloud 取代。v2 事项只改这些目录，以及让它们独立构建和检查所需的 CI 与 Taskfile 入口。现有 Cloud、`frontend/` 和其他仓库的改动不放在 v2 事项下，按正常流程另开 issue。
-- **接口**：临时后端实现 cloud `api/openapi.json` 中 v2 用到的子集，v2 前端用生成的客户端，以后切换到正式 Cloud 时前端基本不用改。契约里缺的接口先在临时后端补上，并在事项里记下，作为正式 Cloud 以后要补的契约。
+- **代码**：都在 `ora-space/cloud` 的独立目录里。`frontend-v2/` 是正式的 v2 前端；`v2-server/` 是单体后端，一个独立的 Go 模块；它的实现以后可以被替换，但它的 API 是基准（见下一条）。v2 事项只改这些目录，以及让它们独立构建和检查所需的 CI 与 Taskfile 入口。现有 Cloud、`frontend/` 和其他仓库的改动不放在 v2 事项下，按正常流程另开 issue。
+- **接口**：cloud 对 desktop 和 v2 前端提供的 API 只有一套，与后端是 v2-server 还是正式 Cloud 无关。API 变更以 v2-server 为准：v2-server 的 API 是基准，正式 Cloud 后端向它靠拢，缺的由正式 Cloud 补齐（#1017）。v2 前端用生成的客户端，后端换成正式 Cloud 时前端基本不用改。
 - **label**：开 issue 时用 `node scripts/cli.ts new --label v2 --label repo:cloud ...`（正文里的 `v2` 只在 `Labels:` 行上才算），之后用 `/label v2`。运行 issue 不用自己打：bot 打开运行 issue 时从 parent 继承 `v2`；parent 之后 `/label v2` 或 `/unlabel v2`，bot 同步到它未关闭的运行 issue。正文写了"总事项：#N"、而 #N 挂着 `v2` 的 issue，打开时 bot 同样打上 `v2`。
 - **标题**：v2 事项的标题一律写成 `[v2] xxxx`，运行 issue 写成 `运行：[v2] xxxx`。`run` 默认取"运行：<parent 标题>"，parent 标题带上前缀就自动符合；用 `run --title` 自拟标题，或关闭时用 `close --title` 改成结果标题，都要保留这个格式。
-- **不走 specs 流程**：不做 [specs 根决策门禁](../memory/rules/specs-root-decision-gate.md)，不写 ADR，不分三个运行，不登记核心用例证据；PR 描述写"v2，不涉及 specs"代替 ADR 状态。其余照旧：运行 issue、worktree、`Refs ora-space/circus#<运行 issue>`、PR 只装交付物、review 和合并。
+- **不走 specs 流程**（只限 `phase:1`，见"[阶段](#阶段)"）：不做 [specs 根决策门禁](../memory/rules/specs-root-decision-gate.md)，不写 ADR，不分三个运行，不登记核心用例证据；PR 描述写"v2，不涉及 specs"代替 ADR 状态。其余照旧：运行 issue、worktree、`Refs ora-space/circus#<运行 issue>`、PR 只装交付物、review 和合并。
 - **送审附截图**：v2 运行打 `status:in-review` 时，同一条评论里必须附上界面截图，否则 bot 拒绝；push 新 commit 后重新送审，也要附上新 commit 的截图。纯后端改动截一张用到它的界面。reviewer 和 owner 对照截图检视，`review:lgtm` 照旧写明审过的 commit。截图写成 Markdown 图片（`![说明](https://...)`）或网页拖拽上传生成的图片：
   - 人在网页上拖拽上传，同一条评论写上 `/label status:in-review`；
   - agent 无法经 API 上传图片：把截图提交到自己 fork 上的独立分支（如 `screenshots/<运行 issue>`，不进 PR），用 `https://raw.githubusercontent.com/<login>/cloud/<commit>/<文件>` 引用，再 `node scripts/cli.ts label <运行 issue> +status:in-review --body-file <写了图片的文件>`。
+
+### 阶段
+
+Ora 分三个阶段推进（#1017），事项用 `phase:*` label 标出属于哪个阶段：
+
+| label | 阶段 | 完成标准和流程 |
+|---|---|---|
+| `phase:1` | v2 演示 | 功能覆盖演示场景；只改 v2 目录的事项按上文"[v2](#v2)"，不走 specs 流程 |
+| `phase:2` | desktop 与 cloud 协调 | desktop 连接 cloud，两端行为一致；改的是长期契约，**不豁免 specs**，即使只改 v2 目录也走[正常流程](#开发产品仓库)（根决策门禁、ADR、三个运行） |
+| `phase:3` | 真实多租户云端集群 | 正式 Cloud 后端简化，并对齐 v2-server 的 API |
+
+- 阶段可以并行：phase1 没结束时，phase2 也可以先做。
+- `phase:*` 和 `v2` 正交：`v2` 说明改的是 v2 目录、送审附截图，`phase:*` 说明属于哪个阶段。只改 v2 目录的 phase2 事项两个都挂，但按 phase2 走 specs 流程。
+- 开 issue 时在正文写上 `phase:N`（和 `repo:*` 一样），之后用 `/label phase:N`。运行 issue 不打，阶段看 parent。
 
 ## Label 登记表
 
@@ -271,7 +285,8 @@ cloud v2 包括正式的 v2 前端和一个临时的单体后端，用于尽快�
 | `review:lgtm` | 别人审过运行 issue 的 PR，认为可以合并（见"review 运行 issue"）；作者重新打 `status:in-review` 或有人打 `status:needs-author` 时清除 | ✗ | ✓ |
 | `priority:p0`–`p3` | 优先级：立即、高、中、低；不设就是没有优先级 | ✓ | ✓ |
 | `repo:<name>` | 事项落在哪个 ora-space 仓库：desktop、specs、cluster、cloud、sandbox、marketplace；跨仓库可打多个 | ✓ | ✗ |
-| `v2` | cloud v2 的正式前端与临时后端（见"[v2](#v2)"）：运行 issue 随 parent 继承，不走 specs 流程，送审要附界面截图 | 只在 `Labels:` 行 | ✗ |
+| `phase:1`–`phase:3` | 事项属于 Ora 的哪个阶段（见"[阶段](#阶段)"）；运行 issue 不打 | ✓ | ✓ |
+| `v2` | cloud v2 的正式前端与 v2-server（见"[v2](#v2)"）：运行 issue 随 parent 继承，`phase:1` 不走 specs 流程，送审要附界面截图 | 只在 `Labels:` 行 | ✗ |
 | `run` | 运行 issue（正文首行 `Parent: #N`）。由 bot 管理：只在打开运行 issue 时由 bot 打上，命令不能增删 | ✗ | 与 `preflight` 互斥 |
 | `preflight` | parent 依赖未完成时先做的运行 issue（正文首行 `Parent: #N (preflight)`）。由 bot 管理：打开时打上，parent 的依赖都关闭后换成 `run` | ✗ | 与 `run` 互斥 |
 
